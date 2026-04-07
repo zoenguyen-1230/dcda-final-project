@@ -1,19 +1,34 @@
 type EnvShape = Record<string, string | undefined>;
 type PreviewBuildMode = "filled" | "blank" | null;
 
-const processEnv =
+const runtimeProcessEnv =
   (globalThis as typeof globalThis & { process?: { env?: EnvShape } }).process?.env ?? {};
 
+const supabaseUrl =
+  (typeof process !== "undefined" ? process.env.EXPO_PUBLIC_SUPABASE_URL : undefined) ??
+  runtimeProcessEnv.EXPO_PUBLIC_SUPABASE_URL ??
+  "";
+
+const supabasePublicKey =
+  (typeof process !== "undefined"
+    ? process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+    : undefined) ??
+  runtimeProcessEnv.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+  (typeof process !== "undefined" ? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY : undefined) ??
+  runtimeProcessEnv.EXPO_PUBLIC_SUPABASE_ANON_KEY ??
+  "";
+
+const previewBuildModeValue =
+  (typeof process !== "undefined" ? process.env.EXPO_PUBLIC_PREVIEW_BUILD_MODE : undefined) ??
+  runtimeProcessEnv.EXPO_PUBLIC_PREVIEW_BUILD_MODE ??
+  "";
+
 export const env = {
-  supabaseUrl: processEnv.EXPO_PUBLIC_SUPABASE_URL ?? "",
-  supabasePublicKey:
-    processEnv.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    processEnv.EXPO_PUBLIC_SUPABASE_ANON_KEY ??
-    "",
+  supabaseUrl,
+  supabasePublicKey,
   previewBuildMode:
-    processEnv.EXPO_PUBLIC_PREVIEW_BUILD_MODE === "filled" ||
-    processEnv.EXPO_PUBLIC_PREVIEW_BUILD_MODE === "blank"
-      ? (processEnv.EXPO_PUBLIC_PREVIEW_BUILD_MODE as PreviewBuildMode)
+    previewBuildModeValue === "filled" || previewBuildModeValue === "blank"
+      ? (previewBuildModeValue as PreviewBuildMode)
       : null,
 };
 
