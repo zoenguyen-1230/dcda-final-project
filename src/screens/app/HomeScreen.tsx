@@ -19,6 +19,9 @@ export function HomeScreen() {
   const [myMood, setMyMood] = useState("calm");
   const [myEnergy, setMyEnergy] = useState("steady");
   const [myHealth, setMyHealth] = useState("okay");
+  const [openStatusMenu, setOpenStatusMenu] = useState<"mood" | "energy" | "health" | null>(
+    null
+  );
   const [selectedAudience, setSelectedAudience] = useState<string[]>(["conn-1", "conn-3"]);
   const [statusSent, setStatusSent] = useState(false);
 
@@ -72,43 +75,94 @@ export function HomeScreen() {
 
         <View style={styles.controlGroup}>
           <Text style={styles.controlLabel}>Mood</Text>
-          <View style={styles.chipWrap}>
-            {moodOptions.map((option) => (
-              <FilterChip
-                key={option}
-                label={option}
-                active={myMood === option}
-                onPress={() => setMyMood(option)}
-              />
-            ))}
+          <View style={styles.selectWrap}>
+            <TouchableOpacity
+              style={styles.selectButton}
+              onPress={() =>
+                setOpenStatusMenu((current) => (current === "mood" ? null : "mood"))
+              }
+            >
+              <Text style={styles.selectButtonText}>{myMood}</Text>
+              <Text style={styles.selectChevron}>{openStatusMenu === "mood" ? "▲" : "▼"}</Text>
+            </TouchableOpacity>
+            {openStatusMenu === "mood" ? (
+              <View style={styles.optionList}>
+                {moodOptions.map((option) => (
+                  <TouchableOpacity
+                    key={option}
+                    style={styles.optionRow}
+                    onPress={() => {
+                      setMyMood(option);
+                      setOpenStatusMenu(null);
+                    }}
+                  >
+                    <Text style={styles.optionText}>{option}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : null}
           </View>
         </View>
 
         <View style={styles.controlGroup}>
           <Text style={styles.controlLabel}>Energy</Text>
-          <View style={styles.chipWrap}>
-            {energyOptions.map((option) => (
-              <FilterChip
-                key={option}
-                label={option}
-                active={myEnergy === option}
-                onPress={() => setMyEnergy(option)}
-              />
-            ))}
+          <View style={styles.selectWrap}>
+            <TouchableOpacity
+              style={styles.selectButton}
+              onPress={() =>
+                setOpenStatusMenu((current) => (current === "energy" ? null : "energy"))
+              }
+            >
+              <Text style={styles.selectButtonText}>{myEnergy}</Text>
+              <Text style={styles.selectChevron}>{openStatusMenu === "energy" ? "▲" : "▼"}</Text>
+            </TouchableOpacity>
+            {openStatusMenu === "energy" ? (
+              <View style={styles.optionList}>
+                {energyOptions.map((option) => (
+                  <TouchableOpacity
+                    key={option}
+                    style={styles.optionRow}
+                    onPress={() => {
+                      setMyEnergy(option);
+                      setOpenStatusMenu(null);
+                    }}
+                  >
+                    <Text style={styles.optionText}>{option}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : null}
           </View>
         </View>
 
         <View style={styles.controlGroup}>
           <Text style={styles.controlLabel}>Health</Text>
-          <View style={styles.chipWrap}>
-            {healthOptions.map((option) => (
-              <FilterChip
-                key={option}
-                label={option}
-                active={myHealth === option}
-                onPress={() => setMyHealth(option)}
-              />
-            ))}
+          <View style={styles.selectWrap}>
+            <TouchableOpacity
+              style={styles.selectButton}
+              onPress={() =>
+                setOpenStatusMenu((current) => (current === "health" ? null : "health"))
+              }
+            >
+              <Text style={styles.selectButtonText}>{myHealth}</Text>
+              <Text style={styles.selectChevron}>{openStatusMenu === "health" ? "▲" : "▼"}</Text>
+            </TouchableOpacity>
+            {openStatusMenu === "health" ? (
+              <View style={styles.optionList}>
+                {healthOptions.map((option) => (
+                  <TouchableOpacity
+                    key={option}
+                    style={styles.optionRow}
+                    onPress={() => {
+                      setMyHealth(option);
+                      setOpenStatusMenu(null);
+                    }}
+                  >
+                    <Text style={styles.optionText}>{option}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : null}
           </View>
         </View>
 
@@ -239,6 +293,52 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
+  },
+  selectWrap: {
+    gap: 6,
+  },
+  selectButton: {
+    minHeight: 48,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: palette.line,
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  selectButtonText: {
+    color: palette.text,
+    fontSize: 14,
+    flex: 1,
+    textTransform: "capitalize",
+  },
+  selectChevron: {
+    color: palette.berry,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  optionList: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: palette.line,
+    backgroundColor: "#FFFFFF",
+    overflow: "hidden",
+  },
+  optionRow: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#F5E8E2",
+  },
+  optionText: {
+    color: palette.text,
+    fontSize: 14,
+    fontWeight: "600",
+    textTransform: "capitalize",
   },
   primaryButton: {
     backgroundColor: palette.text,

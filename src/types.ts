@@ -82,6 +82,8 @@ export interface VisitPlan {
   id: string;
   title: string;
   date: string;
+  startDate: string;
+  endDate?: string;
   location: string;
   daysAway: number;
   plan: string;
@@ -114,9 +116,20 @@ export interface TripToolkitItem {
 export interface FlightWindow {
   id: string;
   trip: string;
-  dateRange: string;
+  startDate: string;
+  endDate?: string;
   price: number;
   note: string;
+}
+
+export interface FlightTrackerEntry {
+  id: string;
+  trip: string;
+  connectionId: string;
+  direction: "arrival" | "departure";
+  travelDate: string;
+  flightCode: string;
+  routeNote: string;
 }
 
 export interface PackingItem {

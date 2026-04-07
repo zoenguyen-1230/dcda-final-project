@@ -16,6 +16,8 @@ This starter repo now gives you a structured Expo + React Native foundation with
 - time capsule messages
 - shared calendar
 - next-visit countdown
+- trip editor with calendar selection
+- trip toolkit for flights, weather, packing, and budget
 - date-night idea generator
 
 ## Product Framework
@@ -33,7 +35,8 @@ This starter repo now gives you a structured Expo + React Native foundation with
 - `People`: add and manage friends, family, and partners, plus social profile context
 - `Chat`: asynchronous messaging with rich media but no live calling
 - `Shared`: journal, time capsule, and calendar views
-- `Plans`: date generator and next-visit planning
+- `Connect`: smart call scheduling and date-night ideas
+- `Trips`: countdowns, travel planning, flights, weather, packing, and budget
 
 ### 3. Suggested backend model later
 
@@ -143,20 +146,21 @@ Expo Hosting uses immutable deployments plus aliases. The `draft` alias will alw
 
 ## GitHub
 
-This repo is not connected to a GitHub remote yet. To finish that:
+This repo is now connected to GitHub:
 
-1. Create an empty private GitHub repository.
-2. Add it as `origin`.
-3. Push the project.
+- `https://github.com/zoenguyen-1230/distance-together-dcda-final-project`
 
-Example:
+The recommended collaboration workflow is:
 
-```bash
-git remote add origin <YOUR_GITHUB_REPO_URL>
-git add .
-git commit -m "Initial prototype"
-git push -u origin main
-```
+1. Pull latest `main`
+2. Create a short feature branch
+3. Make changes and run `npm run typecheck`
+4. Push your branch
+5. Merge after review or coordination
+
+See:
+
+- `CONTRIBUTING.md`
 
 ## Custom Domain Later
 

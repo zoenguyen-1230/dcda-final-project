@@ -11,11 +11,12 @@ import {
   nextVisitItinerary,
   packingChecklist,
   sharedBudgetSeed,
+  trackedFlights,
   tripToolkit,
   upcomingVisits,
 } from "../../data/mockData";
 import { locationDirectory } from "../../data/locationDirectory";
-import { BudgetItem, FlightWindow, VisitPlan } from "../../types";
+import { BudgetItem, FlightTrackerEntry, FlightWindow, VisitPlan } from "../../types";
 import { palette } from "../../theme/palette";
 
 const budgetCategories = [
@@ -45,6 +46,28 @@ const monthNames = [
   "December",
 ];
 
+const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function parseDateValue(dateValue: string) {
+  const [year, month, day] = dateValue.split("-").map(Number);
+
+  if (!year || !month || !day) {
+    return null;
+  }
+
+  return new Date(year, month - 1, day, 12, 0, 0);
+}
+
+function toDateValue(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}`;
+}
+
+function formatCalendarMonth(date: Date) {
+  return `${monthNames[date.getMonth()]} ${date.getFullYear()}`;
+}
+
 function displayDateToInputValue(dateLabel: string) {
   const [monthName, dayWithComma, year] = dateLabel.split(" ");
   const monthIndex = monthNames.indexOf(monthName);
@@ -66,6 +89,40 @@ function inputValueToDisplayDate(dateValue: string) {
   }
 
   return `${monthName} ${Number(day)}, ${year}`;
+}
+
+function formatDateRange(startDate: string, endDate?: string) {
+  if (!startDate) {
+    return "";
+  }
+
+  if (!endDate || endDate === startDate) {
+    return inputValueToDisplayDate(startDate);
+  }
+
+  const start = parseDateValue(startDate);
+  const end = parseDateValue(endDate);
+
+  if (!start || !end) {
+    return inputValueToDisplayDate(startDate);
+  }
+
+  const startMonth = monthNames[start.getMonth()];
+  const endMonth = monthNames[end.getMonth()];
+  const startDay = start.getDate();
+  const endDay = end.getDate();
+  const startYear = start.getFullYear();
+  const endYear = end.getFullYear();
+
+  if (startYear === endYear && start.getMonth() === end.getMonth()) {
+    return `${startMonth} ${startDay}-${endDay}, ${startYear}`;
+  }
+
+  if (startYear === endYear) {
+    return `${startMonth} ${startDay} - ${endMonth} ${endDay}, ${startYear}`;
+  }
+
+  return `${startMonth} ${startDay}, ${startYear} - ${endMonth} ${endDay}, ${endYear}`;
 }
 
 function getDaysAway(dateValue: string) {
@@ -109,25 +166,198 @@ function getTemperatureDisplay(
   return `${lowFahrenheit}-${highFahrenheit}\u00B0F`;
 }
 
+function buildCalendarCells(monthDate: Date) {
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const firstDay = new Date(year, month, 1, 12, 0, 0);
+  const daysInMonth = new Date(year, month + 1, 0, 12, 0, 0).getDate();
+  const leadingBlanks = firstDay.getDay();
+  const cells: Array<{ key: string; label: string; value?: string }> = [];
+
+  for (let index = 0; index < leadingBlanks; index += 1) {
+    cells.push({ key: `blank-${year}-${month}-${index}`, label: "" });
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const currentDate = new Date(year, month, day, 12, 0, 0);
+    cells.push({
+      key: toDateValue(currentDate),
+      label: String(day),
+      value: toDateValue(currentDate),
+    });
+  }
+
+  return cells;
+}
+
+interface CalendarRangePickerProps {
+  title: string;
+  summary: string;
+  monthDate: Date;
+  startDate: string;
+  endDate?: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  onShiftMonth: (offset: number) => void;
+  onSelectDate: (dateValue: string) => void;
+  onClear: () => void;
+  helperText: string;
+}
+
+function CalendarRangePicker({
+  title,
+  summary,
+  monthDate,
+  startDate,
+  endDate,
+  isOpen,
+  onToggle,
+  onShiftMonth,
+  onSelectDate,
+  onClear,
+  helperText,
+}: CalendarRangePickerProps) {
+  const cells = buildCalendarCells(monthDate);
+
+  return (
+    <View style={styles.calendarWrap}>
+      <TouchableOpacity style={styles.calendarTrigger} onPress={onToggle} activeOpacity={0.9}>
+        <View style={styles.calendarHeaderCopy}>
+          <Text style={styles.controlLabel}>{title}</Text>
+          <Text style={styles.feedMeta}>{summary}</Text>
+        </View>
+        <Text style={styles.selectChevron}>{isOpen ? "▲" : "▼"}</Text>
+      </TouchableOpacity>
+
+      {isOpen ? (
+        <View style={styles.calendarCard}>
+          <View style={styles.calendarHeader}>
+            <TouchableOpacity style={styles.calendarMonthButton} onPress={() => onShiftMonth(-1)}>
+              <Text style={styles.calendarMonthButtonText}>Prev</Text>
+            </TouchableOpacity>
+            <Text style={styles.calendarMonthTitle}>{formatCalendarMonth(monthDate)}</Text>
+            <TouchableOpacity style={styles.calendarMonthButton} onPress={() => onShiftMonth(1)}>
+              <Text style={styles.calendarMonthButtonText}>Next</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.calendarWeekHeader}>
+            {weekdayLabels.map((label) => (
+              <Text key={label} style={styles.calendarWeekLabel}>
+                {label}
+              </Text>
+            ))}
+          </View>
+          <View style={styles.calendarGrid}>
+            {cells.map((cell) => {
+              const isSelectedStart = cell.value === startDate;
+              const isSelectedEnd = cell.value === endDate;
+              const hasRangeEnd = typeof endDate === "string" && endDate.length > 0;
+              const isInRange =
+                Boolean(cell.value) &&
+                Boolean(startDate) &&
+                hasRangeEnd &&
+                cell.value! > startDate &&
+                cell.value! < endDate;
+
+              return (
+                <TouchableOpacity
+                  key={cell.key}
+                  style={[
+                    styles.calendarDay,
+                    !cell.value && styles.calendarDayBlank,
+                    isInRange && styles.calendarDayRange,
+                    (isSelectedStart || isSelectedEnd) && styles.calendarDaySelected,
+                  ]}
+                  onPress={() => (cell.value ? onSelectDate(cell.value) : undefined)}
+                  disabled={!cell.value}
+                  activeOpacity={0.85}
+                >
+                  <Text
+                    style={[
+                      styles.calendarDayText,
+                      !cell.value && styles.calendarDayTextBlank,
+                      isInRange && styles.calendarDayRangeText,
+                      (isSelectedStart || isSelectedEnd) && styles.calendarDaySelectedText,
+                    ]}
+                  >
+                    {cell.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <View style={styles.calendarFooter}>
+            <Text style={styles.helperMeta}>{helperText}</Text>
+            <TouchableOpacity style={styles.secondaryAction} onPress={onClear}>
+              <Text style={styles.secondaryActionText}>Clear</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export function TripsScreen() {
   const [trips, setTrips] = useState<VisitPlan[]>(upcomingVisits);
   const [selectedTripId, setSelectedTripId] = useState(upcomingVisits[0]?.id ?? "");
   const [tripDraftTitle, setTripDraftTitle] = useState(upcomingVisits[0]?.title ?? "");
   const [tripDraftLocation, setTripDraftLocation] = useState(upcomingVisits[0]?.location ?? "");
-  const [tripDraftDate, setTripDraftDate] = useState(
-    displayDateToInputValue(upcomingVisits[0]?.date ?? "")
+  const [tripDraftStartDate, setTripDraftStartDate] = useState(
+    upcomingVisits[0]?.startDate ?? ""
+  );
+  const [tripDraftEndDate, setTripDraftEndDate] = useState(
+    upcomingVisits[0]?.endDate ?? ""
   );
   const [tripDraftPlan, setTripDraftPlan] = useState(upcomingVisits[0]?.plan ?? "");
   const [tripDraftParticipantIds, setTripDraftParticipantIds] = useState<string[]>(
     upcomingVisits[0]?.participantIds ?? []
   );
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const initialDate = parseDateValue(upcomingVisits[0]?.startDate ?? "");
+
+    return initialDate
+      ? new Date(initialDate.getFullYear(), initialDate.getMonth(), 1, 12, 0, 0)
+      : new Date();
+  });
   const [selectedFlightTrip, setSelectedFlightTrip] = useState(
     upcomingVisits[0]?.location ?? ""
   );
   const [flightWindows, setFlightWindows] = useState<FlightWindow[]>(cheapFlightWindows);
-  const [draftFlightDateRange, setDraftFlightDateRange] = useState("");
+  const [draftFlightStartDate, setDraftFlightStartDate] = useState("");
+  const [draftFlightEndDate, setDraftFlightEndDate] = useState("");
+  const [flightCalendarMonth, setFlightCalendarMonth] = useState(() => {
+    const initialDate = parseDateValue(upcomingVisits[0]?.startDate ?? "");
+
+    return initialDate
+      ? new Date(initialDate.getFullYear(), initialDate.getMonth(), 1, 12, 0, 0)
+      : new Date();
+  });
   const [draftFlightPrice, setDraftFlightPrice] = useState("");
   const [draftFlightNote, setDraftFlightNote] = useState("");
+  const [selectedTrackedFlightTrip, setSelectedTrackedFlightTrip] = useState(
+    upcomingVisits[0]?.location ?? ""
+  );
+  const [trackedFlightEntries, setTrackedFlightEntries] =
+    useState<FlightTrackerEntry[]>(trackedFlights);
+  const [draftTrackedFlightConnectionId, setDraftTrackedFlightConnectionId] = useState(
+    connections[0]?.id ?? ""
+  );
+  const [draftTrackedFlightDirection, setDraftTrackedFlightDirection] = useState<
+    "arrival" | "departure"
+  >("arrival");
+  const [draftTrackedFlightDate, setDraftTrackedFlightDate] = useState("");
+  const [trackerCalendarMonth, setTrackerCalendarMonth] = useState(() => {
+    const initialDate = parseDateValue(upcomingVisits[0]?.startDate ?? "");
+
+    return initialDate
+      ? new Date(initialDate.getFullYear(), initialDate.getMonth(), 1, 12, 0, 0)
+      : new Date();
+  });
+  const [draftTrackedFlightCode, setDraftTrackedFlightCode] = useState("");
+  const [draftTrackedFlightRouteNote, setDraftTrackedFlightRouteNote] = useState("");
+  const [openTrackedFlightPersonMenu, setOpenTrackedFlightPersonMenu] = useState(false);
+  const [openTrackedFlightDirectionMenu, setOpenTrackedFlightDirectionMenu] = useState(false);
   const [selectedVisitTitle, setSelectedVisitTitle] = useState(upcomingVisits[0]?.title ?? "");
   const [itineraryItems, setItineraryItems] = useState(nextVisitItinerary);
   const [completedItinerary, setCompletedItinerary] = useState<string[]>([
@@ -156,6 +386,9 @@ export function TripsScreen() {
   const [temperatureUnit, setTemperatureUnit] = useState<"fahrenheit" | "celsius">(
     "fahrenheit"
   );
+  const [openCalendarPicker, setOpenCalendarPicker] = useState<
+    "trip" | "flight" | "tracker" | null
+  >(null);
 
   const isEditingExistingTrip = selectedTripId !== "";
   const tripLocationSuggestions = useMemo(() => {
@@ -177,6 +410,27 @@ export function TripsScreen() {
       ),
     [tripDraftLocation]
   );
+  const tripDraftDateSummary = useMemo(
+    () =>
+      tripDraftStartDate
+        ? formatDateRange(tripDraftStartDate, tripDraftEndDate)
+        : "Choose a trip date from the calendar",
+    [tripDraftEndDate, tripDraftStartDate]
+  );
+  const draftFlightDateSummary = useMemo(
+    () =>
+      draftFlightStartDate
+        ? formatDateRange(draftFlightStartDate, draftFlightEndDate)
+        : "Choose a flexible fare window",
+    [draftFlightEndDate, draftFlightStartDate]
+  );
+  const draftTrackedFlightDateSummary = useMemo(
+    () =>
+      draftTrackedFlightDate
+        ? formatDateRange(draftTrackedFlightDate)
+        : "Choose a flight day from the calendar",
+    [draftTrackedFlightDate]
+  );
 
   const visibleItinerary = useMemo(
     () => itineraryItems.filter((item) => item.visitTitle === selectedVisitTitle),
@@ -191,6 +445,10 @@ export function TripsScreen() {
   const visibleFlightWindows = useMemo(
     () => flightWindows.filter((item) => item.trip === selectedFlightTrip),
     [flightWindows, selectedFlightTrip]
+  );
+  const visibleTrackedFlights = useMemo(
+    () => trackedFlightEntries.filter((item) => item.trip === selectedTrackedFlightTrip),
+    [trackedFlightEntries, selectedTrackedFlightTrip]
   );
 
   const visibleBudgetItems = useMemo(
@@ -221,6 +479,9 @@ export function TripsScreen() {
   );
 
   const isBudgetClosed = closedBudgetTrips.includes(selectedBudgetTrip);
+  const trackedFlightPersonName =
+    connections.find((connection) => connection.id === draftTrackedFlightConnectionId)?.name ??
+    "Choose person";
 
   const toggleItinerary = (id: string) => {
     setCompletedItinerary((current) =>
@@ -291,11 +552,12 @@ export function TripsScreen() {
   };
 
   const addFlightWindow = () => {
-    const dateRange = draftFlightDateRange.trim();
+    const startDate = draftFlightStartDate.trim();
+    const endDate = draftFlightEndDate.trim();
     const note = draftFlightNote.trim();
     const price = Number.parseFloat(draftFlightPrice);
 
-    if (!dateRange || !note || Number.isNaN(price)) {
+    if (!startDate || !note || Number.isNaN(price)) {
       return;
     }
 
@@ -304,18 +566,50 @@ export function TripsScreen() {
       {
         id: `flight-${Date.now()}`,
         trip: selectedFlightTrip,
-        dateRange,
+        startDate,
+        endDate: endDate || undefined,
         price,
         note,
       },
     ]);
-    setDraftFlightDateRange("");
+    setDraftFlightStartDate("");
+    setDraftFlightEndDate("");
     setDraftFlightPrice("");
     setDraftFlightNote("");
   };
 
   const removeFlightWindow = (id: string) => {
     setFlightWindows((current) => current.filter((item) => item.id !== id));
+  };
+
+  const addTrackedFlight = () => {
+    const travelDate = draftTrackedFlightDate.trim();
+    const flightCode = draftTrackedFlightCode.trim();
+    const routeNote = draftTrackedFlightRouteNote.trim();
+
+    if (!draftTrackedFlightConnectionId || !travelDate || !flightCode || !routeNote) {
+      return;
+    }
+
+    setTrackedFlightEntries((current) => [
+      ...current,
+      {
+        id: `tracked-flight-${Date.now()}`,
+        trip: selectedTrackedFlightTrip,
+        connectionId: draftTrackedFlightConnectionId,
+        direction: draftTrackedFlightDirection,
+        travelDate,
+        flightCode,
+        routeNote,
+      },
+    ]);
+    setDraftTrackedFlightDate("");
+    setDraftTrackedFlightCode("");
+    setDraftTrackedFlightRouteNote("");
+  };
+
+  const removeTrackedFlight = (id: string) => {
+    setTrackedFlightEntries((current) => current.filter((item) => item.id !== id));
   };
 
   const addBudgetItem = (item: BudgetItem) => {
@@ -398,22 +692,28 @@ export function TripsScreen() {
     setSelectedTripId(tripId);
     setTripDraftTitle(trip.title);
     setTripDraftLocation(trip.location);
-    setTripDraftDate(displayDateToInputValue(trip.date));
+    setTripDraftStartDate(trip.startDate);
+    setTripDraftEndDate(trip.endDate ?? "");
     setTripDraftPlan(trip.plan);
     setTripDraftParticipantIds(trip.participantIds);
+    const tripStart = parseDateValue(trip.startDate);
+    if (tripStart) {
+      setCalendarMonth(new Date(tripStart.getFullYear(), tripStart.getMonth(), 1, 12, 0, 0));
+    }
   };
 
   const saveTrip = () => {
     const title = tripDraftTitle.trim();
     const location = tripDraftLocation.trim();
-    const dateValue = tripDraftDate.trim();
+    const startDate = tripDraftStartDate.trim();
+    const endDate = tripDraftEndDate.trim();
     const plan = tripDraftPlan.trim();
 
-    if (!title || !location || !dateValue || !plan) {
+    if (!title || !location || !startDate || !plan) {
       return;
     }
 
-    const formattedDate = inputValueToDisplayDate(dateValue);
+    const formattedDate = formatDateRange(startDate, endDate);
     if (!formattedDate) {
       return;
     }
@@ -424,7 +724,9 @@ export function TripsScreen() {
       title,
       location,
       date: formattedDate,
-      daysAway: getDaysAway(dateValue),
+      startDate,
+      endDate: endDate || undefined,
+      daysAway: getDaysAway(startDate),
       plan,
       participantIds: tripDraftParticipantIds,
     };
@@ -445,6 +747,16 @@ export function TripsScreen() {
           item.trip === existingTrip.location ? { ...item, trip: nextTrip.location } : item
         )
       );
+      setFlightWindows((current) =>
+        current.map((item) =>
+          item.trip === existingTrip.location ? { ...item, trip: nextTrip.location } : item
+        )
+      );
+      setTrackedFlightEntries((current) =>
+        current.map((item) =>
+          item.trip === existingTrip.location ? { ...item, trip: nextTrip.location } : item
+        )
+      );
       setBudgetItems((current) =>
         current.map((item) =>
           item.trip === existingTrip.location ? { ...item, trip: nextTrip.location } : item
@@ -459,6 +771,12 @@ export function TripsScreen() {
       setSelectedPackingTrip((current) =>
         current === existingTrip.location ? nextTrip.location : current
       );
+      setSelectedFlightTrip((current) =>
+        current === existingTrip.location ? nextTrip.location : current
+      );
+      setSelectedTrackedFlightTrip((current) =>
+        current === existingTrip.location ? nextTrip.location : current
+      );
       setSelectedBudgetTrip((current) =>
         current === existingTrip.location ? nextTrip.location : current
       );
@@ -468,6 +786,8 @@ export function TripsScreen() {
       setSelectedTripId(nextTrip.id);
       setSelectedVisitTitle(nextTrip.title);
       setSelectedPackingTrip(nextTrip.location);
+      setSelectedFlightTrip(nextTrip.location);
+      setSelectedTrackedFlightTrip(nextTrip.location);
       setSelectedBudgetTrip(nextTrip.location);
     }
   };
@@ -476,9 +796,11 @@ export function TripsScreen() {
     setSelectedTripId("");
     setTripDraftTitle("");
     setTripDraftLocation("");
-    setTripDraftDate("");
+    setTripDraftStartDate("");
+    setTripDraftEndDate("");
     setTripDraftPlan("");
     setTripDraftParticipantIds([]);
+    setCalendarMonth(new Date());
   };
 
   const toggleTripParticipant = (connectionId: string) => {
@@ -497,6 +819,71 @@ export function TripsScreen() {
   const applyTripLocationSuggestion = (locationLabel: string) => {
     setTripDraftLocation(locationLabel);
   };
+
+  const shiftCalendarMonth = (offset: number) => {
+    setCalendarMonth(
+      (current) => new Date(current.getFullYear(), current.getMonth() + offset, 1, 12, 0, 0)
+    );
+  };
+
+  const selectTripDate = (dateValue: string) => {
+    if (!tripDraftStartDate || tripDraftEndDate) {
+      setTripDraftStartDate(dateValue);
+      setTripDraftEndDate("");
+      return;
+    }
+
+    if (dateValue < tripDraftStartDate) {
+      setTripDraftStartDate(dateValue);
+      return;
+    }
+
+    if (dateValue === tripDraftStartDate) {
+      setTripDraftEndDate("");
+      return;
+    }
+
+    setTripDraftEndDate(dateValue);
+  };
+
+  const shiftFlightCalendarMonth = (offset: number) => {
+    setFlightCalendarMonth(
+      (current) => new Date(current.getFullYear(), current.getMonth() + offset, 1, 12, 0, 0)
+    );
+  };
+
+  const selectFlightWindowDate = (dateValue: string) => {
+    if (!draftFlightStartDate || draftFlightEndDate) {
+      setDraftFlightStartDate(dateValue);
+      setDraftFlightEndDate("");
+      return;
+    }
+
+    if (dateValue < draftFlightStartDate) {
+      setDraftFlightStartDate(dateValue);
+      return;
+    }
+
+    if (dateValue === draftFlightStartDate) {
+      setDraftFlightEndDate("");
+      return;
+    }
+
+    setDraftFlightEndDate(dateValue);
+  };
+
+  const shiftTrackerCalendarMonth = (offset: number) => {
+    setTrackerCalendarMonth(
+      (current) => new Date(current.getFullYear(), current.getMonth() + offset, 1, 12, 0, 0)
+    );
+  };
+
+  const selectTrackedFlightDate = (dateValue: string) => {
+    setDraftTrackedFlightDate(dateValue);
+  };
+
+  const getConnectionName = (connectionId: string) =>
+    connections.find((connection) => connection.id === connectionId)?.name ?? "Your person";
 
   return (
     <ScreenSurface>
@@ -545,7 +932,24 @@ export function TripsScreen() {
                 Suggested timezone: {tripLocationMatch.timezone}
               </Text>
             ) : null}
-            <TextInput value={tripDraftDate} onChangeText={setTripDraftDate} placeholder="Date, YYYY-MM-DD" placeholderTextColor="#A08F89" style={styles.textInput} />
+            <CalendarRangePicker
+              title="Trip dates"
+              summary={tripDraftDateSummary}
+              monthDate={calendarMonth}
+              startDate={tripDraftStartDate}
+              endDate={tripDraftEndDate}
+              isOpen={openCalendarPicker === "trip"}
+              onToggle={() =>
+                setOpenCalendarPicker((current) => (current === "trip" ? null : "trip"))
+              }
+              onShiftMonth={shiftCalendarMonth}
+              onSelectDate={selectTripDate}
+              onClear={() => {
+                setTripDraftStartDate("");
+                setTripDraftEndDate("");
+              }}
+              helperText="Tap once for a single-day trip. Tap a second later date to turn it into a multi-day trip."
+            />
             <TextInput value={tripDraftPlan} onChangeText={setTripDraftPlan} placeholder="Description or shared checklist" placeholderTextColor="#A08F89" style={[styles.textInput, styles.detailInput]} multiline />
             <View style={styles.controlGroup}>
               <Text style={styles.controlLabel}>Who is this trip with?</Text>
@@ -563,7 +967,7 @@ export function TripsScreen() {
           </View>
           <View style={styles.rowMeta}>
             <Text style={styles.helperMeta}>
-              Countdown preview: {tripDraftDate ? `${getDaysAway(tripDraftDate)} days away` : "add a date"}
+              Countdown preview: {tripDraftStartDate ? `${getDaysAway(tripDraftStartDate)} days away` : "add a date"}
             </Text>
             <TouchableOpacity style={styles.primaryButton} onPress={saveTrip}>
               <Text style={styles.primaryButtonText}>
@@ -678,12 +1082,23 @@ export function TripsScreen() {
           <View style={styles.editorCard}>
             <Text style={styles.subsectionTitle}>Add a cheap-flight window</Text>
             <View style={styles.inputStack}>
-              <TextInput
-                value={draftFlightDateRange}
-                onChangeText={setDraftFlightDateRange}
-                placeholder="Date range, ex: May 16 - May 19"
-                placeholderTextColor="#A08F89"
-                style={styles.textInput}
+              <CalendarRangePicker
+                title="Flexible dates"
+                summary={draftFlightDateSummary}
+                monthDate={flightCalendarMonth}
+                startDate={draftFlightStartDate}
+                endDate={draftFlightEndDate}
+                isOpen={openCalendarPicker === "flight"}
+                onToggle={() =>
+                  setOpenCalendarPicker((current) => (current === "flight" ? null : "flight"))
+                }
+                onShiftMonth={shiftFlightCalendarMonth}
+                onSelectDate={selectFlightWindowDate}
+                onClear={() => {
+                  setDraftFlightStartDate("");
+                  setDraftFlightEndDate("");
+                }}
+                helperText="Pick a start day, then an end day to compare a cheaper travel window."
               />
               <TextInput
                 value={draftFlightPrice}
@@ -709,16 +1124,18 @@ export function TripsScreen() {
 
           {visibleFlightWindows.map((item) => (
             <View key={item.id} style={styles.tripSummaryCard}>
-              <View style={styles.summaryHeader}>
-                <View style={styles.summaryBadge}>
-                  <Text style={styles.summaryValue}>${item.price}</Text>
-                  <Text style={styles.summaryLabel}>est. fare</Text>
+                <View style={styles.summaryHeader}>
+                  <View style={styles.summaryBadge}>
+                    <Text style={styles.summaryValue}>${item.price}</Text>
+                    <Text style={styles.summaryLabel}>est. fare</Text>
+                  </View>
+                  <View style={styles.toolCopy}>
+                    <Text style={styles.feedTitle}>
+                      {formatDateRange(item.startDate, item.endDate)}
+                    </Text>
+                    <Text style={styles.feedMeta}>{item.note}</Text>
+                  </View>
                 </View>
-                <View style={styles.toolCopy}>
-                  <Text style={styles.feedTitle}>{item.dateRange}</Text>
-                  <Text style={styles.feedMeta}>{item.note}</Text>
-                </View>
-              </View>
               <TouchableOpacity style={styles.removeButton} onPress={() => removeFlightWindow(item.id)}>
                 <Text style={styles.removeButtonText}>Remove</Text>
               </TouchableOpacity>
@@ -729,6 +1146,159 @@ export function TripsScreen() {
             <View style={styles.emptyState}>
               <Text style={styles.feedMeta}>
                 No flight windows yet for this trip. Add one above to compare cheaper date options.
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        <View style={styles.subsectionBlock}>
+          <Text style={styles.subsectionTitle}>Tracked arrivals and departures</Text>
+          <View style={styles.controlGroup}>
+            <Text style={styles.controlLabel}>Choose a trip or city</Text>
+            <View style={styles.chipWrap}>
+              {trips.map((visit) => (
+                <FilterChip
+                  key={`tracked-${visit.id}`}
+                  label={visit.location}
+                  active={selectedTrackedFlightTrip === visit.location}
+                  onPress={() => setSelectedTrackedFlightTrip(visit.location)}
+                />
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.editorCard}>
+            <Text style={styles.subsectionTitle}>Add a coming-or-going flight</Text>
+            <View style={styles.inputStack}>
+              <View style={styles.selectWrap}>
+                <TouchableOpacity
+                  style={styles.selectButton}
+                  onPress={() =>
+                    setOpenTrackedFlightPersonMenu((current) => !current)
+                  }
+                >
+                  <Text style={styles.selectButtonText}>{trackedFlightPersonName}</Text>
+                  <Text style={styles.selectChevron}>
+                    {openTrackedFlightPersonMenu ? "▲" : "▼"}
+                  </Text>
+                </TouchableOpacity>
+                {openTrackedFlightPersonMenu ? (
+                  <View style={styles.optionList}>
+                    {connections.map((connection) => (
+                      <TouchableOpacity
+                        key={`tracked-person-${connection.id}`}
+                        style={styles.optionRow}
+                        onPress={() => {
+                          setDraftTrackedFlightConnectionId(connection.id);
+                          setOpenTrackedFlightPersonMenu(false);
+                        }}
+                      >
+                        <Text style={styles.optionText}>{connection.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : null}
+              </View>
+              <View style={styles.selectWrap}>
+                <TouchableOpacity
+                  style={styles.selectButton}
+                  onPress={() =>
+                    setOpenTrackedFlightDirectionMenu((current) => !current)
+                  }
+                >
+                  <Text style={styles.selectButtonText}>
+                    {draftTrackedFlightDirection === "arrival" ? "Arrival" : "Departure"}
+                  </Text>
+                  <Text style={styles.selectChevron}>
+                    {openTrackedFlightDirectionMenu ? "▲" : "▼"}
+                  </Text>
+                </TouchableOpacity>
+                {openTrackedFlightDirectionMenu ? (
+                  <View style={styles.optionList}>
+                    {["arrival", "departure"].map((direction) => (
+                      <TouchableOpacity
+                        key={`tracked-direction-${direction}`}
+                        style={styles.optionRow}
+                        onPress={() => {
+                          setDraftTrackedFlightDirection(direction as "arrival" | "departure");
+                          setOpenTrackedFlightDirectionMenu(false);
+                        }}
+                      >
+                        <Text style={styles.optionText}>
+                          {direction === "arrival" ? "Arrival" : "Departure"}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : null}
+              </View>
+              <CalendarRangePicker
+                title="Flight day"
+                summary={draftTrackedFlightDateSummary}
+                monthDate={trackerCalendarMonth}
+                startDate={draftTrackedFlightDate}
+                isOpen={openCalendarPicker === "tracker"}
+                onToggle={() =>
+                  setOpenCalendarPicker((current) => (current === "tracker" ? null : "tracker"))
+                }
+                onShiftMonth={shiftTrackerCalendarMonth}
+                onSelectDate={selectTrackedFlightDate}
+                onClear={() => setDraftTrackedFlightDate("")}
+                helperText="Use one date to track when someone arrives or heads home."
+              />
+              <TextInput
+                value={draftTrackedFlightCode}
+                onChangeText={setDraftTrackedFlightCode}
+                placeholder="Flight code, ex: AA 1472"
+                placeholderTextColor="#A08F89"
+                style={styles.textInput}
+              />
+              <TextInput
+                value={draftTrackedFlightRouteNote}
+                onChangeText={setDraftTrackedFlightRouteNote}
+                placeholder="Arrival or departure note"
+                placeholderTextColor="#A08F89"
+                style={[styles.textInput, styles.detailInput]}
+                multiline
+              />
+            </View>
+            <TouchableOpacity style={styles.primaryButton} onPress={addTrackedFlight}>
+              <Text style={styles.primaryButtonText}>Add tracked flight</Text>
+            </TouchableOpacity>
+          </View>
+
+          {visibleTrackedFlights.map((item) => (
+            <View key={item.id} style={styles.tripSummaryCard}>
+              <View style={styles.summaryHeader}>
+                <View style={styles.summaryBadge}>
+                  <Text style={styles.summaryValue}>
+                    {item.direction === "arrival" ? "IN" : "OUT"}
+                  </Text>
+                  <Text style={styles.summaryLabel}>
+                    {item.direction === "arrival" ? "arrival" : "departure"}
+                  </Text>
+                </View>
+                <View style={styles.toolCopy}>
+                  <Text style={styles.feedTitle}>
+                    {getConnectionName(item.connectionId)} • {item.flightCode}
+                  </Text>
+                  <Text style={styles.feedMeta}>{formatDateRange(item.travelDate)}</Text>
+                  <Text style={styles.feedMeta}>{item.routeNote}</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.removeButton}
+                onPress={() => removeTrackedFlight(item.id)}
+              >
+                <Text style={styles.removeButtonText}>Remove</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+
+          {!visibleTrackedFlights.length ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.feedMeta}>
+                No arrival or departure flights tracked yet for this trip. Add one above so you can plan pickups and goodbyes together.
               </Text>
             </View>
           ) : null}
@@ -1095,6 +1665,127 @@ const styles = StyleSheet.create({
   },
   inputStack: {
     gap: 10,
+  },
+  calendarWrap: {
+    gap: 8,
+  },
+  calendarTrigger: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: palette.line,
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  calendarCard: {
+    gap: 8,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: palette.line,
+    backgroundColor: "#FFFFFF",
+    padding: 10,
+    width: "100%",
+    maxWidth: 320,
+    alignSelf: "center",
+    shadowColor: "#2A1B18",
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  calendarHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+  },
+  calendarHeaderCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  calendarMonthTitle: {
+    color: palette.text,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  calendarMonthButton: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: palette.line,
+    backgroundColor: "#FFF8F2",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  calendarMonthButtonText: {
+    color: palette.text,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  calendarWeekHeader: {
+    flexDirection: "row",
+    gap: 4,
+  },
+  calendarWeekLabel: {
+    flex: 1,
+    color: palette.muted,
+    fontSize: 10,
+    fontWeight: "700",
+    textAlign: "center",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  calendarGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 4,
+  },
+  calendarDay: {
+    width: "13.45%",
+    aspectRatio: 0.88,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#F3E6DE",
+    backgroundColor: "#FFF8F2",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  calendarDayBlank: {
+    backgroundColor: "transparent",
+    borderColor: "transparent",
+  },
+  calendarDayRange: {
+    backgroundColor: "#FDF0E7",
+    borderColor: "#F1D8C8",
+  },
+  calendarDaySelected: {
+    backgroundColor: palette.text,
+    borderColor: palette.text,
+  },
+  calendarDayText: {
+    color: palette.text,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  calendarDayTextBlank: {
+    color: "transparent",
+  },
+  calendarDayRangeText: {
+    color: palette.berry,
+  },
+  calendarDaySelectedText: {
+    color: "#FFFFFF",
+  },
+  calendarFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
   },
   textInput: {
     borderRadius: 18,
