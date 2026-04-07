@@ -1,0 +1,345 @@
+import React, { useState } from "react";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { socialPlatforms } from "../../data/mockData";
+import { useAuth } from "../../providers/AuthProvider";
+import { palette } from "../../theme/palette";
+import { FilterChip } from "../../components/ui/FilterChip";
+import { ScreenSurface } from "../../components/ui/ScreenSurface";
+
+type AuthMode = "login" | "signup";
+
+export function AuthScreen() {
+  const { signIn, signUp, isDemoMode } = useAuth();
+  const [mode, setMode] = useState<AuthMode>("signup");
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [selectedSocials, setSelectedSocials] = useState<string[]>([
+    "Instagram",
+    "Spotify",
+  ]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const toggleSocial = (platform: string) => {
+    setSelectedSocials((current) =>
+      current.includes(platform)
+        ? current.filter((item) => item !== platform)
+        : [...current, platform]
+    );
+  };
+
+  const handleSubmit = async () => {
+    setErrorMessage(null);
+    setIsSubmitting(true);
+
+    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedName = fullName.trim();
+
+    const result =
+      mode === "signup"
+        ? await signUp(trimmedEmail, password, trimmedName)
+        : await signIn(trimmedEmail, password);
+
+    setIsSubmitting(false);
+
+    if (result.error) {
+      setErrorMessage(result.error);
+    }
+  };
+
+  return (
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <ScreenSurface contentContainerStyle={styles.content}>
+        <LinearGradient
+          colors={[palette.softRose, palette.softSun, "#FCE8FF"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.hero}
+        >
+          <Text style={styles.eyebrow}>Distance Together</Text>
+          <Text style={styles.heroTitle}>Feel close, even from far away.</Text>
+          <Text style={styles.heroBody}>
+            Shared routines, emotional presence, memory keeping, and thoughtful
+            planning for the people you love.
+          </Text>
+          <View style={styles.chipWrap}>
+            {["Chat", "Shared journal", "Time capsule", "Visit countdown"].map(
+              (item) => (
+                <View key={item} style={styles.valueChip}>
+                  <Text style={styles.valueChipText}>{item}</Text>
+                </View>
+              )
+            )}
+          </View>
+        </LinearGradient>
+
+        <View style={styles.card}>
+          <View style={styles.segmentRow}>
+            <SegmentButton
+              label="Sign up"
+              active={mode === "signup"}
+              onPress={() => setMode("signup")}
+            />
+            <SegmentButton
+              label="Log in"
+              active={mode === "login"}
+              onPress={() => setMode("login")}
+            />
+          </View>
+
+          {isDemoMode && (
+            <View style={styles.notice}>
+              <Text style={styles.noticeTitle}>Demo mode is on</Text>
+              <Text style={styles.noticeBody}>
+                Add Supabase credentials later to turn this into real email auth.
+                For now, any email and password will enter the app.
+              </Text>
+            </View>
+          )}
+
+          {mode === "signup" && (
+            <>
+              <Text style={styles.inputLabel}>Full name</Text>
+              <TextInput
+                placeholder="Your name"
+                placeholderTextColor="#9A8480"
+                style={styles.textInput}
+                value={fullName}
+                onChangeText={setFullName}
+              />
+            </>
+          )}
+
+          <Text style={styles.inputLabel}>Email</Text>
+          <TextInput
+            placeholder="you@example.com"
+            placeholderTextColor="#9A8480"
+            style={styles.textInput}
+            value={email}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            onChangeText={setEmail}
+          />
+
+          <Text style={styles.inputLabel}>Password</Text>
+          <TextInput
+            placeholder="Password"
+            placeholderTextColor="#9A8480"
+            style={styles.textInput}
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+          />
+
+          <Text style={styles.sectionTitle}>Link your favorite socials</Text>
+          <Text style={styles.sectionHint}>
+            Start with profile context. The real relationship activity still happens
+            inside the app.
+          </Text>
+          <View style={styles.chipWrap}>
+            {socialPlatforms.map((platform) => (
+              <FilterChip
+                key={platform}
+                label={platform}
+                active={selectedSocials.includes(platform)}
+                onPress={() => toggleSocial(platform)}
+              />
+            ))}
+          </View>
+
+          {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+
+          <TouchableOpacity
+            style={[styles.primaryButton, isSubmitting && styles.buttonDisabled]}
+            onPress={() => {
+              void handleSubmit();
+            }}
+            disabled={isSubmitting}
+          >
+            <Text style={styles.primaryButtonText}>
+              {isSubmitting
+                ? "Loading..."
+                : mode === "signup"
+                  ? "Create your shared space"
+                  : "Enter app"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </ScreenSurface>
+    </KeyboardAvoidingView>
+  );
+}
+
+function SegmentButton({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.segmentButton, active && styles.segmentButtonActive]}
+      onPress={onPress}
+    >
+      <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: palette.background,
+  },
+  content: {
+    paddingTop: 60,
+  },
+  hero: {
+    borderRadius: 28,
+    padding: 24,
+    gap: 14,
+  },
+  eyebrow: {
+    color: palette.berry,
+    fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+  },
+  heroTitle: {
+    color: palette.text,
+    fontSize: 34,
+    lineHeight: 40,
+    fontWeight: "800",
+  },
+  heroBody: {
+    color: palette.muted,
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  chipWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  valueChip: {
+    backgroundColor: "rgba(255,255,255,0.7)",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  valueChipText: {
+    color: palette.text,
+    fontWeight: "600",
+  },
+  card: {
+    backgroundColor: palette.card,
+    borderRadius: 28,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: palette.line,
+    gap: 12,
+  },
+  segmentRow: {
+    flexDirection: "row",
+    backgroundColor: "#F7ECE7",
+    borderRadius: 999,
+    padding: 4,
+    marginBottom: 8,
+  },
+  segmentButton: {
+    flex: 1,
+    borderRadius: 999,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  segmentButtonActive: {
+    backgroundColor: "#FFFFFF",
+  },
+  segmentText: {
+    color: palette.muted,
+    fontWeight: "600",
+  },
+  segmentTextActive: {
+    color: palette.text,
+  },
+  notice: {
+    backgroundColor: "#FFF2D9",
+    borderRadius: 20,
+    padding: 14,
+    gap: 4,
+  },
+  noticeTitle: {
+    color: palette.text,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  noticeBody: {
+    color: palette.muted,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  inputLabel: {
+    color: palette.text,
+    fontSize: 14,
+    fontWeight: "700",
+    marginTop: 6,
+  },
+  textInput: {
+    backgroundColor: "#FFF7F2",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: palette.line,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    color: palette.text,
+    fontSize: 16,
+  },
+  sectionTitle: {
+    color: palette.text,
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  sectionHint: {
+    color: palette.muted,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  errorText: {
+    color: "#A73434",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  primaryButton: {
+    backgroundColor: palette.text,
+    borderRadius: 18,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    alignItems: "center",
+    marginTop: 8,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  primaryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+});

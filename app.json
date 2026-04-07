@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Distance Together",
+    "slug": "distance-together-web-draft",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#fff7f0"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#fff7f0"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "1fe1fefa-8287-4d0c-8623-bf2b3a79e4fb"
+      }
+    },
+    "owner": "persimmon1230"
+  }
+}

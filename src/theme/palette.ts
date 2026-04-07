@@ -1,0 +1,16 @@
+export const palette = {
+  background: "#FFF8F2",
+  card: "#FFFCFA",
+  text: "#231815",
+  muted: "#6B5B57",
+  line: "#EAD7CF",
+  coral: "#FF7D6B",
+  berry: "#C64C73",
+  teal: "#4DA8A2",
+  gold: "#F2B66D",
+  lavender: "#F4E7FF",
+  mint: "#E8F8F2",
+  sky: "#DFF3FF",
+  softRose: "#FFE3DB",
+  softSun: "#FFF6E7",
+};
