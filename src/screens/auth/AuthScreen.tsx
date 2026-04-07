@@ -16,6 +16,7 @@ import { FilterChip } from "../../components/ui/FilterChip";
 import { ScreenSurface } from "../../components/ui/ScreenSurface";
 
 type AuthMode = "login" | "signup";
+type PreviewMode = "filled" | "blank";
 
 export function AuthScreen() {
   const { signIn, signUp, isDemoMode } = useAuth();
@@ -55,6 +56,16 @@ export function AuthScreen() {
     if (result.error) {
       setErrorMessage(result.error);
     }
+  };
+
+  const openPreview = (previewMode: PreviewMode) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.set("preview", previewMode);
+    window.location.href = nextUrl.toString();
   };
 
   return (
@@ -109,6 +120,36 @@ export function AuthScreen() {
               </Text>
             </View>
           )}
+
+          {Platform.OS === "web" ? (
+            <View style={styles.previewCard}>
+              <Text style={styles.previewTitle}>Jump into a preview</Text>
+              <Text style={styles.previewBody}>
+                Use a seeded walkthrough or a completely blank account without signing up first.
+              </Text>
+              <View style={styles.previewButtonRow}>
+                <TouchableOpacity
+                  style={styles.previewButton}
+                  onPress={() => openPreview("filled")}
+                >
+                  <Text style={styles.previewButtonText}>Open full demo</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.previewButton, styles.previewButtonSecondary]}
+                  onPress={() => openPreview("blank")}
+                >
+                  <Text
+                    style={[
+                      styles.previewButtonText,
+                      styles.previewButtonSecondaryText,
+                    ]}
+                  >
+                    Open blank preview
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
 
           {mode === "signup" && (
             <>
@@ -294,6 +335,50 @@ const styles = StyleSheet.create({
     color: palette.muted,
     fontSize: 14,
     lineHeight: 20,
+  },
+  previewCard: {
+    backgroundColor: "#FFF8F2",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: palette.line,
+    padding: 14,
+    gap: 10,
+  },
+  previewTitle: {
+    color: palette.text,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  previewBody: {
+    color: palette.muted,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  previewButtonRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  previewButton: {
+    backgroundColor: palette.text,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    minWidth: 160,
+    alignItems: "center",
+  },
+  previewButtonSecondary: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: palette.text,
+  },
+  previewButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  previewButtonSecondaryText: {
+    color: palette.text,
   },
   inputLabel: {
     color: palette.text,
