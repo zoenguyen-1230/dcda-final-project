@@ -23,19 +23,20 @@ const navigationTheme = {
 };
 
 export function RootNavigator() {
-  const { initialized, userEmail } = useAuth();
+  const { initialized, previewMode, userEmail } = useAuth();
+  const appShellKey = previewMode ?? userEmail ?? "auth";
 
   if (!initialized) {
     return <LoadingScreen />;
   }
 
   return (
-    <NavigationContainer theme={navigationTheme}>
+    <NavigationContainer key={appShellKey} theme={navigationTheme}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {userEmail ? (
-          <Stack.Screen name="App" component={AppTabs} />
+          <Stack.Screen key={appShellKey} name="App" component={AppTabs} />
         ) : (
-          <Stack.Screen name="Auth" component={AuthScreen} />
+          <Stack.Screen key={appShellKey} name="Auth" component={AuthScreen} />
         )}
       </Stack.Navigator>
     </NavigationContainer>

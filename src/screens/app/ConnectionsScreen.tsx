@@ -93,6 +93,14 @@ export function ConnectionsScreen() {
   }, [draftLocation]);
 
   useEffect(() => {
+    setConnections(isDemoMode ? seedConnections : []);
+    setSelectedFilter(isDemoMode ? "partner" : "all");
+    setSelectedSocials(isDemoMode ? ["Instagram", "Spotify"] : []);
+    setEditorVisible(false);
+    setSelectedPersonId("");
+  }, [isDemoMode]);
+
+  useEffect(() => {
     setProfileDraftName(profile.displayName);
     setProfileDraftLocation(profile.location);
     setProfileDraftTimezone(profile.timezone);
