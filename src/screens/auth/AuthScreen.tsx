@@ -64,7 +64,7 @@ export function AuthScreen() {
     }
 
     const nextUrl = new URL(window.location.href);
-    nextUrl.searchParams.set("preview", previewMode);
+    nextUrl.hash = `preview=${previewMode}`;
     window.location.href = nextUrl.toString();
   };
 

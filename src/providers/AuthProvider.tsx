@@ -36,7 +36,10 @@ function readPreviewMode(): PreviewMode {
     return null;
   }
 
-  const previewValue = new URLSearchParams(window.location.search).get("preview");
+  const hashValue = window.location.hash.replace(/^#/, "");
+  const previewValue =
+    new URLSearchParams(hashValue).get("preview") ??
+    new URLSearchParams(window.location.search).get("preview");
 
   if (previewValue === "filled" || previewValue === "blank") {
     return previewValue;
@@ -62,9 +65,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     window.addEventListener("popstate", syncPreviewMode);
+    window.addEventListener("hashchange", syncPreviewMode);
 
     return () => {
       window.removeEventListener("popstate", syncPreviewMode);
+      window.removeEventListener("hashchange", syncPreviewMode);
     };
   }, []);
 
@@ -174,6 +179,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== "undefined") {
       const nextUrl = new URL(window.location.href);
       nextUrl.searchParams.delete("preview");
+      nextUrl.hash = "";
       window.history.replaceState({}, "", nextUrl.toString());
       setPreviewMode(null);
     }
