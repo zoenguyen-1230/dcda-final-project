@@ -7,6 +7,7 @@ import { ConnectionsScreen } from "../screens/app/ConnectionsScreen";
 import { ChatScreen } from "../screens/app/ChatScreen";
 import { SharedScreen } from "../screens/app/SharedScreen";
 import { PlansScreen } from "../screens/app/PlansScreen";
+import { TripsScreen } from "../screens/app/TripsScreen";
 import { palette } from "../theme/palette";
 import { useAuth } from "../providers/AuthProvider";
 
@@ -70,7 +71,12 @@ export function AppTabs() {
       <Tab.Screen name="People" component={ConnectionsScreen} />
       <Tab.Screen name="Chat" component={ChatScreen} />
       <Tab.Screen name="Shared" component={SharedScreen} />
-      <Tab.Screen name="Plans" component={PlansScreen} />
+      <Tab.Screen
+        name="Plans"
+        component={PlansScreen}
+        options={{ title: "Connect", tabBarLabel: "Connect" }}
+      />
+      <Tab.Screen name="Trips" component={TripsScreen} />
     </Tab.Navigator>
   );
 }

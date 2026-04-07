@@ -1,5 +1,5 @@
-import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import { StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import {
   calendarEvents,
   journalEntries,
@@ -9,23 +9,136 @@ import { ScreenSurface } from "../../components/ui/ScreenSurface";
 import { SectionCard } from "../../components/ui/SectionCard";
 import { palette } from "../../theme/palette";
 
+function getJournalDateParts(date: string) {
+  const [month = "", day = ""] = date.split(" ");
+
+  return {
+    month: month.slice(0, 3).toUpperCase(),
+    day,
+  };
+}
+
 export function SharedScreen() {
+  const [entries, setEntries] = useState(journalEntries);
+  const [draftPhotos, setDraftPhotos] = useState<Record<string, string>>({});
+
+  const addPhotoToEntry = (entryId: string, label: string) => {
+    const cleanLabel = label.trim();
+
+    if (!cleanLabel) {
+      return;
+    }
+
+    setEntries((current) =>
+      current.map((entry) =>
+        entry.id === entryId
+          ? { ...entry, photos: [...entry.photos, cleanLabel] }
+          : entry
+      )
+    );
+    setDraftPhotos((current) => ({ ...current, [entryId]: "" }));
+  };
+
+  const removePhotoFromEntry = (entryId: string, label: string) => {
+    setEntries((current) =>
+      current.map((entry) =>
+        entry.id === entryId
+          ? { ...entry, photos: entry.photos.filter((photo) => photo !== label) }
+          : entry
+      )
+    );
+  };
+
+  const recentPhotoIdeas = [
+    "coffee receipt snapshot",
+    "museum hallway mirror",
+    "airport goodbye selfie",
+    "playlist screenshot",
+  ];
+
   return (
     <ScreenSurface>
       <SectionCard
         title="Shared journal"
         subtitle="Capture the moments that matter, not just the messages you send"
       >
-        {journalEntries.map((entry) => (
+        {entries.map((entry) => (
           <View key={entry.id} style={styles.timelineCard}>
             <View style={styles.timelineHeader}>
               <View style={styles.timelineBadge}>
-                <Text style={styles.timelineMonth}>{entry.date.split(" ")[0].slice(0, 3).toUpperCase()}</Text>
-                <Text style={styles.timelineDay}>{entry.date.split(" ")[1]}</Text>
+                <Text style={styles.timelineMonth}>{getJournalDateParts(entry.date).month}</Text>
+                <Text style={styles.timelineDay}>{getJournalDateParts(entry.date).day}</Text>
               </View>
               <View style={styles.timelineCopy}>
                 <Text style={styles.timelineTitle}>{entry.title}</Text>
                 <Text style={styles.timelineBody}>{entry.body}</Text>
+              </View>
+            </View>
+            <View style={styles.photoStrip}>
+              {entry.photos.map((photo) => (
+                <TouchableOpacity
+                  key={photo}
+                  style={styles.photoTile}
+                  onPress={() => removePhotoFromEntry(entry.id, photo)}
+                  activeOpacity={0.9}
+                >
+                  <View style={styles.photoArt}>
+                    <Text style={styles.photoArtLabel}>PHOTO</Text>
+                    <Text style={styles.photoArtHint}>placeholder</Text>
+                  </View>
+                  <View style={styles.photoMeta}>
+                    <Text style={styles.photoTileLabel}>{photo}</Text>
+                    <Text style={styles.photoTileHint}>Tap to remove</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                style={styles.photoAddTile}
+                onPress={() => addPhotoToEntry(entry.id, draftPhotos[entry.id] ?? "")}
+                activeOpacity={0.9}
+              >
+                <View style={styles.photoAddArt}>
+                  <Text style={styles.photoAddPlus}>+</Text>
+                </View>
+                <View style={styles.photoMeta}>
+                  <Text style={styles.photoAddLabel}>Add photo</Text>
+                  <Text style={styles.photoAddHint}>
+                    {draftPhotos[entry.id]?.trim()
+                      ? "Use the draft caption below"
+                      : "Name a memory below first"}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.photoComposer}>
+              <Text style={styles.composerLabel}>Add a photo caption or placeholder label</Text>
+              <View style={styles.inputRow}>
+                <TextInput
+                  value={draftPhotos[entry.id] ?? ""}
+                  onChangeText={(value) =>
+                    setDraftPhotos((current) => ({ ...current, [entry.id]: value }))
+                  }
+                  placeholder="ex: coffee shop selfie"
+                  placeholderTextColor="#A08F89"
+                  style={styles.textInput}
+                />
+                <TouchableOpacity
+                  style={styles.addButton}
+                  onPress={() => addPhotoToEntry(entry.id, draftPhotos[entry.id] ?? "")}
+                >
+                  <Text style={styles.addButtonText}>Add</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.ideaWrap}>
+                {recentPhotoIdeas.map((idea) => (
+                  <TouchableOpacity
+                    key={`${entry.id}-${idea}`}
+                    style={styles.ideaChip}
+                    onPress={() => addPhotoToEntry(entry.id, idea)}
+                  >
+                    <Text style={styles.ideaChipText}>{idea}</Text>
+                  </TouchableOpacity>
+                ))}
               </View>
             </View>
           </View>
@@ -79,6 +192,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: palette.line,
+    gap: 14,
   },
   timelineHeader: {
     flexDirection: "row",
@@ -119,6 +233,147 @@ const styles = StyleSheet.create({
     color: palette.muted,
     fontSize: 15,
     lineHeight: 22,
+  },
+  photoStrip: {
+    flexDirection: "row",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+  photoTile: {
+    width: 128,
+    borderRadius: 20,
+    backgroundColor: "#FFF1E7",
+    borderWidth: 1,
+    borderColor: "#F4E6DF",
+    overflow: "hidden",
+  },
+  photoArt: {
+    minHeight: 96,
+    backgroundColor: "#F7E8DA",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0DDD3",
+  },
+  photoArtLabel: {
+    color: palette.text,
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+  },
+  photoArtHint: {
+    color: palette.berry,
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginTop: 4,
+  },
+  photoMeta: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  photoTileLabel: {
+    color: palette.text,
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 18,
+  },
+  photoTileHint: {
+    color: palette.berry,
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 6,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  photoAddTile: {
+    width: 128,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "#E6CDBE",
+    backgroundColor: "#FFFBF7",
+    overflow: "hidden",
+  },
+  photoAddArt: {
+    minHeight: 96,
+    alignItems: "center",
+    justifyContent: "center",
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0DDD3",
+    backgroundColor: "#FFF6ED",
+  },
+  photoAddPlus: {
+    color: palette.berry,
+    fontSize: 34,
+    lineHeight: 38,
+    fontWeight: "300",
+  },
+  photoAddLabel: {
+    color: palette.text,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  photoAddHint: {
+    color: palette.muted,
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 6,
+  },
+  photoComposer: {
+    gap: 10,
+  },
+  composerLabel: {
+    color: palette.text,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  inputRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  textInput: {
+    flex: 1,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: palette.line,
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    color: palette.text,
+    fontSize: 14,
+  },
+  addButton: {
+    borderRadius: 18,
+    backgroundColor: palette.text,
+    paddingHorizontal: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  addButtonText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  ideaWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  ideaChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#F4E6DF",
+    backgroundColor: "#FFF1E7",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  ideaChipText: {
+    color: palette.berry,
+    fontSize: 12,
+    fontWeight: "700",
   },
   feedCard: {
     flexDirection: "row",

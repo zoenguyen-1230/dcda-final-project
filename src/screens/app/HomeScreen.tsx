@@ -5,13 +5,34 @@ import { MetricCard } from "../../components/ui/MetricCard";
 import { FilterChip } from "../../components/ui/FilterChip";
 import { ScreenSurface } from "../../components/ui/ScreenSurface";
 import { SectionCard } from "../../components/ui/SectionCard";
-import { moodUpdates, nextVisit, promptDeck } from "../../data/mockData";
+import { connections, moodUpdates, nextVisit, promptDeck } from "../../data/mockData";
 import { useAuth } from "../../providers/AuthProvider";
 import { palette } from "../../theme/palette";
+
+const moodOptions = ["hopeful", "busy", "calm", "excited"];
+const energyOptions = ["low", "steady", "high"];
+const healthOptions = ["rested", "okay", "needs rest", "on the go"];
 
 export function HomeScreen() {
   const { displayName, userEmail, isDemoMode } = useAuth();
   const [selectedPrompt, setSelectedPrompt] = useState(promptDeck[0]);
+  const [myMood, setMyMood] = useState("calm");
+  const [myEnergy, setMyEnergy] = useState("steady");
+  const [myHealth, setMyHealth] = useState("okay");
+  const [selectedAudience, setSelectedAudience] = useState<string[]>(["conn-1", "conn-3"]);
+  const [statusSent, setStatusSent] = useState(false);
+
+  const toggleAudience = (connectionId: string) => {
+    setSelectedAudience((current) =>
+      current.includes(connectionId)
+        ? current.filter((item) => item !== connectionId)
+        : [...current, connectionId]
+    );
+  };
+
+  const sendStatus = () => {
+    setStatusSent(true);
+  };
 
   return (
     <ScreenSurface>
@@ -37,6 +58,90 @@ export function HomeScreen() {
         <MetricCard label="Shared entries" value="42" accent={palette.teal} />
         <MetricCard label="Pending capsules" value="3" accent={palette.berry} />
       </View>
+
+      <SectionCard
+        title="Your live status"
+        subtitle="Send your own quick update so your people know how you are doing in real time"
+      >
+        <View style={styles.statusCard}>
+          <Text style={styles.feedTitle}>How are you showing up today?</Text>
+          <Text style={styles.feedMeta}>
+            Mood: {myMood} | Energy: {myEnergy} | Health: {myHealth}
+          </Text>
+        </View>
+
+        <View style={styles.controlGroup}>
+          <Text style={styles.controlLabel}>Mood</Text>
+          <View style={styles.chipWrap}>
+            {moodOptions.map((option) => (
+              <FilterChip
+                key={option}
+                label={option}
+                active={myMood === option}
+                onPress={() => setMyMood(option)}
+              />
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.controlGroup}>
+          <Text style={styles.controlLabel}>Energy</Text>
+          <View style={styles.chipWrap}>
+            {energyOptions.map((option) => (
+              <FilterChip
+                key={option}
+                label={option}
+                active={myEnergy === option}
+                onPress={() => setMyEnergy(option)}
+              />
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.controlGroup}>
+          <Text style={styles.controlLabel}>Health</Text>
+          <View style={styles.chipWrap}>
+            {healthOptions.map((option) => (
+              <FilterChip
+                key={option}
+                label={option}
+                active={myHealth === option}
+                onPress={() => setMyHealth(option)}
+              />
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.controlGroup}>
+          <Text style={styles.controlLabel}>Send to</Text>
+          <View style={styles.chipWrap}>
+            {connections.map((connection) => (
+              <FilterChip
+                key={connection.id}
+                label={connection.name}
+                active={selectedAudience.includes(connection.id)}
+                onPress={() => toggleAudience(connection.id)}
+              />
+            ))}
+          </View>
+        </View>
+
+        <TouchableOpacity style={styles.primaryButton} onPress={sendStatus}>
+          <Text style={styles.primaryButtonText}>Share status with your people</Text>
+        </TouchableOpacity>
+
+        {statusSent ? (
+          <View style={styles.sentCard}>
+            <Text style={styles.feedSubtle}>
+              Sent to{" "}
+              {connections
+                .filter((connection) => selectedAudience.includes(connection.id))
+                .map((connection) => connection.name)
+                .join(", ") || "your circle"}
+            </Text>
+          </View>
+        ) : null}
+      </SectionCard>
 
       <SectionCard
         title="Daily check-in prompt"
@@ -108,6 +213,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 10,
   },
+  statusCard: {
+    backgroundColor: "#FFF8F2",
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: palette.line,
+    padding: 14,
+    gap: 4,
+  },
+  controlGroup: {
+    gap: 8,
+  },
+  controlLabel: {
+    color: palette.text,
+    fontSize: 13,
+    fontWeight: "700",
+  },
   promptText: {
     color: palette.text,
     fontSize: 18,
@@ -130,6 +251,13 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 15,
     fontWeight: "700",
+  },
+  sentCard: {
+    backgroundColor: palette.mint,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#CDEBDD",
+    padding: 14,
   },
   feedCard: {
     flexDirection: "row",

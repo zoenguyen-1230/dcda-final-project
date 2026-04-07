@@ -16,6 +16,7 @@ export type AppTabParamList = {
   Chat: undefined;
   Shared: undefined;
   Plans: undefined;
+  Trips: undefined;
 };
 
 export type RootStackParamList = {
@@ -29,6 +30,11 @@ export interface Connection {
   relationshipType: RelationshipType;
   location: string;
   note: string;
+  timezone: string;
+  photoLabel: string;
+  accent: string;
+  linkedSocials: SocialPlatform[];
+  accountStatus: string;
 }
 
 export interface Message {
@@ -44,6 +50,7 @@ export interface JournalEntry {
   date: string;
   title: string;
   body: string;
+  photos: string[];
 }
 
 export interface MoodUpdate {
@@ -72,9 +79,66 @@ export interface CalendarEvent {
 }
 
 export interface VisitPlan {
+  id: string;
   title: string;
   date: string;
   location: string;
   daysAway: number;
   plan: string;
+  participantIds: string[];
+}
+
+export interface ItineraryItem {
+  id: string;
+  visitTitle: string;
+  time: string;
+  title: string;
+  detail: string;
+}
+
+export interface CallWindow {
+  id: string;
+  person: string;
+  energyFit: "low" | "steady" | "high";
+  title: string;
+  detail: string;
+  confidence: string;
+}
+
+export interface TripToolkitItem {
+  id: string;
+  title: string;
+  detail: string;
+}
+
+export interface FlightWindow {
+  id: string;
+  trip: string;
+  dateRange: string;
+  price: number;
+  note: string;
+}
+
+export interface PackingItem {
+  id: string;
+  label: string;
+  trip: string;
+}
+
+export interface BudgetItem {
+  id: string;
+  label: string;
+  amount: number;
+  category: string;
+  payer: string;
+  trip: string;
+}
+
+export interface WeatherForecast {
+  id: string;
+  city: string;
+  icon: string;
+  summary: string;
+  temperatureRange: string;
+  packingNote: string;
 }

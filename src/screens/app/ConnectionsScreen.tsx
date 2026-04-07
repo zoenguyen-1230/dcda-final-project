@@ -1,20 +1,45 @@
-import React, { useMemo, useState } from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { connections, socialPlatforms } from "../../data/mockData";
+import React, { useEffect, useMemo, useState } from "react";
+import { Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { connections as seedConnections, socialPlatforms } from "../../data/mockData";
 import { FilterChip } from "../../components/ui/FilterChip";
 import { ScreenSurface } from "../../components/ui/ScreenSurface";
 import { SectionCard } from "../../components/ui/SectionCard";
-import { ConnectionFilter, SocialPlatform } from "../../types";
+import { locationDirectory } from "../../data/locationDirectory";
+import { Connection, ConnectionFilter, SocialPlatform } from "../../types";
 import { palette } from "../../theme/palette";
 
 const filters: ConnectionFilter[] = ["all", "partner", "friend", "family"];
-
+const profileImages: Record<string, any> = {
+  "conn-1": require("../../assets/sean-profile.jpg"),
+};
+const socialVisuals: Record<
+  SocialPlatform,
+  { glyph: string; background: string; color: string }
+> = {
+  Instagram: { glyph: "IG", background: "#FDE7F0", color: "#C64C73" },
+  Spotify: { glyph: "SP", background: "#E7F8EE", color: "#1DB954" },
+  TikTok: { glyph: "TT", background: "#EAF2FF", color: "#111111" },
+  Facebook: { glyph: "f", background: "#E8F0FF", color: "#1877F2" },
+  X: { glyph: "X", background: "#F2F2F2", color: "#111111" },
+  BeReal: { glyph: "Be", background: "#FFF3D9", color: "#111111" },
+};
 export function ConnectionsScreen() {
+  const [connections, setConnections] = useState<Connection[]>(seedConnections);
   const [selectedFilter, setSelectedFilter] = useState<ConnectionFilter>("partner");
   const [selectedSocials, setSelectedSocials] = useState<SocialPlatform[]>([
     "Instagram",
     "Spotify",
   ]);
+  const [selectedPersonId, setSelectedPersonId] = useState<string>("");
+  const [editorVisible, setEditorVisible] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [draftRelationshipType, setDraftRelationshipType] = useState<ConnectionFilter>("partner");
+  const [draftLocation, setDraftLocation] = useState("");
+  const [draftTimezone, setDraftTimezone] = useState("");
+  const [draftPhotoLabel, setDraftPhotoLabel] = useState("");
+  const [draftNote, setDraftNote] = useState("");
+  const [draftLinkedSocials, setDraftLinkedSocials] = useState<SocialPlatform[]>([]);
+  const [draftAccountStatus, setDraftAccountStatus] = useState("");
 
   const filteredConnections = useMemo(
     () =>
@@ -26,12 +51,121 @@ export function ConnectionsScreen() {
     [selectedFilter]
   );
 
+  const locationSuggestions = useMemo(() => {
+    const query = draftLocation.trim().toLowerCase();
+
+    if (!query) {
+      return [];
+    }
+
+    return locationDirectory
+      .filter((location) => location.label.toLowerCase().includes(query))
+      .slice(0, 5);
+  }, [draftLocation]);
+
+  useEffect(() => {
+    const exactMatch = locationDirectory.find(
+      (location) => location.label.toLowerCase() === draftLocation.trim().toLowerCase()
+    );
+
+    if (exactMatch) {
+      setDraftTimezone(exactMatch.timezone);
+    }
+  }, [draftLocation]);
+
   const toggleSocial = (platform: SocialPlatform) => {
     setSelectedSocials((current) =>
       current.includes(platform)
         ? current.filter((item) => item !== platform)
         : [...current, platform]
     );
+  };
+
+  const loadConnection = (connectionId: string) => {
+    const connection = connections.find((item) => item.id === connectionId);
+
+    if (!connection) {
+      return;
+    }
+
+    setSelectedPersonId(connectionId);
+    setDraftName(connection.name);
+    setDraftRelationshipType(connection.relationshipType);
+    setDraftLocation(connection.location);
+    setDraftTimezone(connection.timezone);
+    setDraftPhotoLabel(connection.photoLabel);
+    setDraftNote(connection.note);
+    setDraftLinkedSocials(connection.linkedSocials);
+    setDraftAccountStatus(connection.accountStatus);
+    setEditorVisible(true);
+  };
+
+  const startNewConnection = () => {
+    setSelectedPersonId("");
+    setDraftName("");
+    setDraftRelationshipType("friend");
+    setDraftLocation("");
+    setDraftTimezone("");
+    setDraftPhotoLabel("");
+    setDraftNote("");
+    setDraftLinkedSocials([]);
+    setDraftAccountStatus("");
+    setEditorVisible(true);
+  };
+
+  const applyLocationSuggestion = (locationLabel: string) => {
+    const match = locationDirectory.find((location) => location.label === locationLabel);
+
+    setDraftLocation(locationLabel);
+    if (match) {
+      setDraftTimezone(match.timezone);
+    }
+  };
+
+  const toggleDraftSocial = (platform: SocialPlatform) => {
+    setDraftLinkedSocials((current) =>
+      current.includes(platform)
+        ? current.filter((item) => item !== platform)
+        : [...current, platform]
+    );
+  };
+
+  const saveConnection = () => {
+    if (
+      !draftName.trim() ||
+      !draftLocation.trim() ||
+      !draftTimezone.trim() ||
+      !draftNote.trim()
+    ) {
+      return;
+    }
+
+    const existingConnection = connections.find((item) => item.id === selectedPersonId);
+    const nextConnection: Connection = {
+      id: existingConnection?.id ?? `conn-${Date.now()}`,
+      name: draftName.trim(),
+      relationshipType:
+        draftRelationshipType === "all" ? "friend" : draftRelationshipType,
+      location: draftLocation.trim(),
+      timezone: draftTimezone.trim(),
+      photoLabel: draftPhotoLabel.trim(),
+      note: draftNote.trim(),
+      linkedSocials: draftLinkedSocials,
+      accountStatus: draftAccountStatus.trim() || "Account ready to connect",
+      accent: existingConnection?.accent ?? "#FFF1E7",
+    };
+
+    if (existingConnection) {
+      setConnections((current) =>
+        current.map((item) => (item.id === existingConnection.id ? nextConnection : item))
+      );
+      setSelectedPersonId(existingConnection.id);
+    } else {
+      setConnections((current) => [...current, nextConnection]);
+      setSelectedPersonId(nextConnection.id);
+    }
+
+    setEditorVisible(false);
   };
 
   return (
@@ -53,30 +187,163 @@ export function ConnectionsScreen() {
 
         {filteredConnections.map((connection) => (
           <View key={connection.id} style={styles.profileCard}>
-            <View
-              style={[
-                styles.avatarLarge,
-                {
-                  backgroundColor:
-                    connection.relationshipType === "partner" ? "#FFD4D8" : palette.sky,
-                },
-              ]}
-            >
-              <Text style={styles.avatarInitial}>{connection.name[0]}</Text>
-            </View>
+            {profileImages[connection.id] ? (
+              <View style={styles.realPhotoPanel}>
+                <Image
+                  source={profileImages[connection.id]}
+                  style={styles.profileImage}
+                  resizeMode="cover"
+                />
+              </View>
+            ) : (
+              <View
+                style={[
+                  styles.photoPanel,
+                  { backgroundColor: connection.accent },
+                ]}
+              >
+                <Text style={styles.avatarInitial}>{connection.name[0]}</Text>
+              </View>
+            )}
             <View style={styles.profileCopy}>
               <Text style={styles.profileName}>{connection.name}</Text>
               <Text style={styles.profileMeta}>
                 {capitalize(connection.relationshipType)} | {connection.location}
               </Text>
               <Text style={styles.profileNote}>{connection.note}</Text>
+              <Text style={styles.profileSubtle}>
+                {connection.photoLabel} | {connection.timezone}
+              </Text>
+              <Text style={styles.accountStatus}>{connection.accountStatus}</Text>
+              <View style={styles.profileSocialRow}>
+                {connection.linkedSocials.map((platform) => {
+                  const visual = socialVisuals[platform];
+
+                  return (
+                    <View
+                      key={`${connection.id}-${platform}`}
+                      style={[
+                        styles.inlineSocialBadge,
+                        { backgroundColor: visual.background },
+                      ]}
+                    >
+                      <Text style={[styles.inlineSocialGlyph, { color: visual.color }]}>
+                        {visual.glyph}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+              <TouchableOpacity onPress={() => loadConnection(connection.id)}>
+                <Text style={styles.editLink}>Edit profile</Text>
+              </TouchableOpacity>
             </View>
           </View>
         ))}
 
-        <TouchableOpacity style={styles.secondaryButton}>
-          <Text style={styles.secondaryButtonText}>Add friend / partner / family member</Text>
-        </TouchableOpacity>
+        <View style={styles.actionRow}>
+          <TouchableOpacity style={styles.secondaryButton} onPress={startNewConnection}>
+            <Text style={styles.secondaryButtonText}>Add friend / partner / family member</Text>
+          </TouchableOpacity>
+        </View>
+
+        {editorVisible ? (
+          <View style={styles.editorCard}>
+            <View style={styles.editorHeader}>
+              <Text style={styles.feedTitle}>
+                {selectedPersonId ? "Edit person profile" : "Add a new person"}
+              </Text>
+              <TouchableOpacity onPress={() => setEditorVisible(false)}>
+                <Text style={styles.editLink}>Close</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.inputStack}>
+              <TextInput
+                value={draftName}
+                onChangeText={setDraftName}
+                placeholder="Name"
+                placeholderTextColor="#A08F89"
+                style={styles.textInput}
+              />
+              <View style={styles.chipWrap}>
+                {["partner", "friend", "family"].map((type) => (
+                  <FilterChip
+                    key={type}
+                    label={capitalize(type)}
+                    active={draftRelationshipType === type}
+                    onPress={() => setDraftRelationshipType(type as ConnectionFilter)}
+                  />
+                ))}
+              </View>
+              <TextInput
+                value={draftLocation}
+                onChangeText={setDraftLocation}
+                placeholder="Location"
+                placeholderTextColor="#A08F89"
+                style={styles.textInput}
+              />
+              {locationSuggestions.length ? (
+                <View style={styles.suggestionList}>
+                  {locationSuggestions.map((location) => (
+                    <TouchableOpacity
+                      key={location.label}
+                      style={styles.suggestionRow}
+                      onPress={() => applyLocationSuggestion(location.label)}
+                    >
+                      <Text style={styles.suggestionTitle}>{location.label}</Text>
+                      <Text style={styles.suggestionMeta}>{location.timezone}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : null}
+              <TextInput
+                value={draftTimezone}
+                onChangeText={setDraftTimezone}
+                placeholder="Timezone, ex: PT"
+                placeholderTextColor="#A08F89"
+                style={styles.textInput}
+              />
+              <TextInput
+                value={draftPhotoLabel}
+                onChangeText={setDraftPhotoLabel}
+                placeholder="Photo label"
+                placeholderTextColor="#A08F89"
+                style={styles.textInput}
+              />
+              <TextInput
+                value={draftNote}
+                onChangeText={setDraftNote}
+                placeholder="Profile note"
+                placeholderTextColor="#A08F89"
+                style={[styles.textInput, styles.detailInput]}
+                multiline
+              />
+              <TextInput
+                value={draftAccountStatus}
+                onChangeText={setDraftAccountStatus}
+                placeholder="Account sync status"
+                placeholderTextColor="#A08F89"
+                style={styles.textInput}
+              />
+              <Text style={styles.accountLabel}>Connect accounts</Text>
+              <View style={styles.chipWrap}>
+                {socialPlatforms.map((platform) => (
+                  <FilterChip
+                    key={`draft-${platform}`}
+                    label={platform}
+                    active={draftLinkedSocials.includes(platform)}
+                    onPress={() => toggleDraftSocial(platform)}
+                  />
+                ))}
+              </View>
+            </View>
+            <TouchableOpacity style={styles.primaryButton} onPress={saveConnection}>
+              <Text style={styles.primaryButtonText}>
+                {selectedPersonId ? "Save profile" : "Add person"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
       </SectionCard>
 
       <SectionCard
@@ -96,14 +363,26 @@ export function ConnectionsScreen() {
 
         {selectedSocials.map((platform) => (
           <View key={platform} style={styles.feedCard}>
-            <View style={styles.socialBadge}>
-              <Text style={styles.socialBadgeText}>{platform.slice(0, 1)}</Text>
+            <View
+              style={[
+                styles.socialBadge,
+                { backgroundColor: socialVisuals[platform].background },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.socialBadgeText,
+                  { color: socialVisuals[platform].color },
+                ]}
+              >
+                {socialVisuals[platform].glyph}
+              </Text>
             </View>
             <View style={styles.feedCopy}>
               <Text style={styles.feedTitle}>{platform} profile linked</Text>
               <Text style={styles.feedMeta}>
-                Use this for music, photo context, identity details, and shared
-                memories around what you already love.
+                Sync handles, recent context, and shared identity cues so the app stays up to
+                date with the accounts you both already use.
               </Text>
             </View>
           </View>
@@ -136,18 +415,34 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: palette.line,
   },
-  avatarLarge: {
-    width: 64,
-    height: 64,
+  photoPanel: {
+    width: 84,
+    minHeight: 84,
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     borderColor: "#F4E6DF",
+    paddingVertical: 10,
+    gap: 4,
+  },
+  realPhotoPanel: {
+    width: 84,
+    height: 104,
+    borderRadius: 22,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#F4E6DF",
+    position: "relative",
+    backgroundColor: "#F4E6DF",
+  },
+  profileImage: {
+    width: "100%",
+    height: "100%",
   },
   avatarInitial: {
     color: palette.text,
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "800",
   },
   profileCopy: {
@@ -169,7 +464,49 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
+  profileSubtle: {
+    color: palette.berry,
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  accountStatus: {
+    color: palette.muted,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  profileSocialRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingTop: 2,
+  },
+  inlineSocialBadge: {
+    minWidth: 34,
+    height: 28,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+  },
+  inlineSocialGlyph: {
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  editLink: {
+    color: palette.berry,
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  actionRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
   secondaryButton: {
+    flex: 1,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: palette.text,
@@ -180,6 +517,83 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: palette.text,
     fontSize: 14,
+    fontWeight: "700",
+  },
+  editorCard: {
+    gap: 12,
+    backgroundColor: "#FFF8F2",
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: palette.line,
+    padding: 14,
+  },
+  editorHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  inputStack: {
+    gap: 10,
+  },
+  textInput: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: palette.line,
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    color: palette.text,
+    fontSize: 14,
+  },
+  detailInput: {
+    minHeight: 84,
+    textAlignVertical: "top",
+  },
+  suggestionList: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: palette.line,
+    backgroundColor: "#FFFFFF",
+    overflow: "hidden",
+  },
+  suggestionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#F5E8E2",
+  },
+  suggestionTitle: {
+    color: palette.text,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  suggestionMeta: {
+    color: palette.berry,
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  accountLabel: {
+    color: palette.text,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  primaryButton: {
+    backgroundColor: palette.text,
+    borderRadius: 18,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    alignItems: "center",
+  },
+  primaryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 15,
     fontWeight: "700",
   },
   feedCard: {
