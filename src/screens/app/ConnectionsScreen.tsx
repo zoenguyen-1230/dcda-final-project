@@ -299,7 +299,7 @@ export function ConnectionsScreen() {
       return;
     }
 
-    const nextSharedConnections = await fetchSharedConnections(user.id).catch(() => []);
+    const nextSharedConnections = await fetchSharedConnections(user.id);
     setConnections((current) => {
       const localConnections = current.filter((connection) => !isSharedConnection(connection.id));
       return [...localConnections, ...nextSharedConnections];
@@ -346,8 +346,9 @@ export function ConnectionsScreen() {
   const handleAcceptInvite = async (inviteId: string) => {
     try {
       await acceptRelationshipInvite(inviteId);
-      setIncomingInvites((current) => current.filter((invite) => invite.id !== inviteId));
       await syncSharedConnections();
+      setIncomingInvites((current) => current.filter((invite) => invite.id !== inviteId));
+      setInviteFeedback("Invite accepted. Your shared space is now connected.");
     } catch (error) {
       setInviteFeedback(error instanceof Error ? error.message : "Invite could not be accepted.");
     }
