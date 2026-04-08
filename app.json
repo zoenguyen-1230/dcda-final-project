@@ -23,11 +23,11 @@
       "bundler": "metro",
       "output": "single"
     },
+    "owner": "persimmon1230",
     "extra": {
       "eas": {
-        "projectId": "1fe1fefa-8287-4d0c-8623-bf2b3a79e4fb"
+        "projectId": "d564234a-2d56-409c-a02c-c5ca79e1f954"
       }
-    },
-    "owner": "persimmon1230"
+    }
   }
 }
