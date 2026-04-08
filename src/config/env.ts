@@ -19,9 +19,7 @@ const supabasePublicKey =
   "";
 
 const previewBuildModeValue =
-  (typeof process !== "undefined" ? process.env.EXPO_PUBLIC_PREVIEW_BUILD_MODE : undefined) ??
-  runtimeProcessEnv.EXPO_PUBLIC_PREVIEW_BUILD_MODE ??
-  "";
+  runtimeProcessEnv.EXPO_PUBLIC_PREVIEW_BUILD_MODE ?? "";
 
 export const env = {
   supabaseUrl,
