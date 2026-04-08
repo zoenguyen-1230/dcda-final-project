@@ -44,7 +44,7 @@ import {
   fetchSharedTimeCapsules,
 } from "../lib/sharedContent";
 import { fetchSharedConnections, isSharedConnection } from "../lib/sharedRelationships";
-import { fetchSharedVisitPlans } from "../lib/sharedTrips";
+import { fetchSharedTripToolkit, fetchSharedVisitPlans } from "../lib/sharedTrips";
 import { useAuth } from "./AuthProvider";
 
 interface AppDataContextValue {
@@ -188,7 +188,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
       try {
         if (shouldUseSupabaseState && user?.id) {
-          const [sharedConnections, sharedMessages, sharedJournalEntries, sharedTimeCapsules, sharedCalendarEvents, sharedVisitPlans] =
+          const [sharedConnections, sharedMessages, sharedJournalEntries, sharedTimeCapsules, sharedCalendarEvents, sharedVisitPlans, sharedTripToolkit] =
             await Promise.all([
               fetchSharedConnections(user.id).catch(() => []),
               fetchSharedMessages(user.id).catch(() => []),
@@ -196,6 +196,15 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
               fetchSharedTimeCapsules(user.id).catch(() => []),
               fetchSharedCalendarEvents(user.id).catch(() => []),
               fetchSharedVisitPlans(user.id).catch(() => []),
+              fetchSharedTripToolkit(user.id).catch(() => ({
+                itineraryItems: [],
+                completedItinerary: [],
+                flightWindows: [],
+                packingItems: [],
+                packedItems: [],
+                budgetItems: [],
+                closedBudgetTrips: [],
+              })),
             ]);
           const workspace = await loadWorkspaceState(user.id);
           const parsed = workspace?.app_data;
@@ -240,13 +249,24 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
                 )
               );
               setItineraryItems(
-                Array.isArray(parsed.itineraryItems) ? (parsed.itineraryItems as ItineraryItem[]) : []
+                mergeById(
+                  Array.isArray(parsed.itineraryItems) ? (parsed.itineraryItems as ItineraryItem[]) : [],
+                  sharedTripToolkit.itineraryItems
+                )
               );
               setCompletedItinerary(
-                Array.isArray(parsed.completedItinerary) ? parsed.completedItinerary : []
+                Array.from(
+                  new Set([
+                    ...(Array.isArray(parsed.completedItinerary) ? parsed.completedItinerary : []),
+                    ...sharedTripToolkit.completedItinerary,
+                  ])
+                )
               );
               setFlightWindows(
-                Array.isArray(parsed.flightWindows) ? (parsed.flightWindows as FlightWindow[]) : []
+                mergeById(
+                  Array.isArray(parsed.flightWindows) ? (parsed.flightWindows as FlightWindow[]) : [],
+                  sharedTripToolkit.flightWindows
+                )
               );
               setTrackedFlights(
                 Array.isArray(parsed.trackedFlights)
@@ -254,14 +274,32 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
                   : []
               );
               setPackingItems(
-                Array.isArray(parsed.packingItems) ? (parsed.packingItems as PackingItem[]) : []
+                mergeById(
+                  Array.isArray(parsed.packingItems) ? (parsed.packingItems as PackingItem[]) : [],
+                  sharedTripToolkit.packingItems
+                )
               );
-              setPackedItems(Array.isArray(parsed.packedItems) ? parsed.packedItems : []);
+              setPackedItems(
+                Array.from(
+                  new Set([
+                    ...(Array.isArray(parsed.packedItems) ? parsed.packedItems : []),
+                    ...sharedTripToolkit.packedItems,
+                  ])
+                )
+              );
               setBudgetItems(
-                Array.isArray(parsed.budgetItems) ? (parsed.budgetItems as BudgetItem[]) : []
+                mergeById(
+                  Array.isArray(parsed.budgetItems) ? (parsed.budgetItems as BudgetItem[]) : [],
+                  sharedTripToolkit.budgetItems
+                )
               );
               setClosedBudgetTrips(
-                Array.isArray(parsed.closedBudgetTrips) ? parsed.closedBudgetTrips : []
+                Array.from(
+                  new Set([
+                    ...(Array.isArray(parsed.closedBudgetTrips) ? parsed.closedBudgetTrips : []),
+                    ...sharedTripToolkit.closedBudgetTrips,
+                  ])
+                )
               );
               setInitialized(true);
             });
@@ -277,14 +315,18 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
             setMessages(mergeById(blankWorkspace.messages, sharedMessages));
             setCheckInPrompts(blankWorkspace.checkInPrompts);
             setVisitPlans(mergeById(blankWorkspace.visitPlans, sharedVisitPlans));
-            setItineraryItems(blankWorkspace.itineraryItems);
-            setCompletedItinerary(blankWorkspace.completedItinerary);
-            setFlightWindows(blankWorkspace.flightWindows);
+            setItineraryItems(mergeById(blankWorkspace.itineraryItems, sharedTripToolkit.itineraryItems));
+            setCompletedItinerary(
+              Array.from(new Set([...blankWorkspace.completedItinerary, ...sharedTripToolkit.completedItinerary]))
+            );
+            setFlightWindows(mergeById(blankWorkspace.flightWindows, sharedTripToolkit.flightWindows));
             setTrackedFlights(blankWorkspace.trackedFlights);
-            setPackingItems(blankWorkspace.packingItems);
-            setPackedItems(blankWorkspace.packedItems);
-            setBudgetItems(blankWorkspace.budgetItems);
-            setClosedBudgetTrips(blankWorkspace.closedBudgetTrips);
+            setPackingItems(mergeById(blankWorkspace.packingItems, sharedTripToolkit.packingItems));
+            setPackedItems(Array.from(new Set([...blankWorkspace.packedItems, ...sharedTripToolkit.packedItems])));
+            setBudgetItems(mergeById(blankWorkspace.budgetItems, sharedTripToolkit.budgetItems));
+            setClosedBudgetTrips(
+              Array.from(new Set([...blankWorkspace.closedBudgetTrips, ...sharedTripToolkit.closedBudgetTrips]))
+            );
             setInitialized(true);
           });
           return;
@@ -379,13 +421,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       messages: withoutRemoteSharedItems(messages),
       checkInPrompts,
       visitPlans: withoutRemoteSharedItems(visitPlans),
-      itineraryItems,
-      completedItinerary,
-      flightWindows,
+      itineraryItems: withoutRemoteSharedItems(itineraryItems),
+      completedItinerary: completedItinerary.filter((itemId) => !itemId.startsWith("remote-")),
+      flightWindows: withoutRemoteSharedItems(flightWindows),
       trackedFlights,
-      packingItems,
-      packedItems,
-      budgetItems,
+      packingItems: withoutRemoteSharedItems(packingItems),
+      packedItems: packedItems.filter((itemId) => !itemId.startsWith("remote-")),
+      budgetItems: withoutRemoteSharedItems(budgetItems),
       closedBudgetTrips,
     };
 

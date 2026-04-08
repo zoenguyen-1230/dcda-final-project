@@ -362,12 +362,78 @@ export function TripsScreen() {
   const hasSharedTripParticipant = (participantIds: string[]) =>
     participantIds.some((participantId) => isSharedConnection(participantId));
 
-  const toggleItinerary = (id: string) => {
-    setCompletedItinerary((current) =>
-      current.includes(id)
-        ? current.filter((item) => item !== id)
-        : [...current, id]
+  const persistSharedTripToolkit = async (input: {
+    tripId?: string;
+    tripTitle?: string;
+    tripLocation?: string;
+    itineraryItems?: typeof itineraryItems;
+    completedItinerary?: typeof completedItinerary;
+    flightWindows?: typeof flightWindows;
+    packingItems?: typeof packingItems;
+    packedItems?: typeof packedItems;
+    budgetItems?: typeof budgetItems;
+    closedBudgetTrips?: typeof closedBudgetTrips;
+  }) => {
+    if (!user?.id || !hasSupabaseCredentials) {
+      return;
+    }
+
+    const sharedTrip =
+      (input.tripId
+        ? trips.find((trip) => trip.id === input.tripId)
+        : null) ??
+      trips.find(
+        (trip) =>
+          trip.id.startsWith("remote-visit-") &&
+          ((input.tripTitle && trip.title === input.tripTitle) ||
+            (input.tripLocation && trip.location === input.tripLocation))
+      );
+
+    if (!sharedTrip || !sharedTrip.id.startsWith("remote-visit-")) {
+      return;
+    }
+
+    const nextItineraryItems = input.itineraryItems ?? itineraryItems;
+    const nextCompletedItinerary = input.completedItinerary ?? completedItinerary;
+    const nextFlightWindows = input.flightWindows ?? flightWindows;
+    const nextPackingItems = input.packingItems ?? packingItems;
+    const nextPackedItems = input.packedItems ?? packedItems;
+    const nextBudgetItems = input.budgetItems ?? budgetItems;
+    const nextClosedBudgetTrips = input.closedBudgetTrips ?? closedBudgetTrips;
+    const relevantItineraryItems = nextItineraryItems.filter(
+      (item) => item.visitTitle === sharedTrip.title
     );
+    const relevantItineraryIds = new Set(relevantItineraryItems.map((item) => item.id));
+    const relevantPackingItems = nextPackingItems.filter(
+      (item) => item.trip === sharedTrip.location
+    );
+    const relevantPackingIds = new Set(relevantPackingItems.map((item) => item.id));
+
+    await saveSharedVisitPlan({
+      userId: user.id,
+      trip: sharedTrip,
+      itineraryItems: relevantItineraryItems,
+      completedItinerary: nextCompletedItinerary.filter((id) =>
+        relevantItineraryIds.has(id)
+      ),
+      flightWindows: nextFlightWindows.filter((item) => item.trip === sharedTrip.location),
+      packingItems: relevantPackingItems,
+      packedItems: nextPackedItems.filter((id) => relevantPackingIds.has(id)),
+      budgetItems: nextBudgetItems.filter((item) => item.trip === sharedTrip.location),
+      budgetClosed: nextClosedBudgetTrips.includes(sharedTrip.location),
+    });
+  };
+
+  const toggleItinerary = (id: string) => {
+    const nextCompletedItinerary = completedItinerary.includes(id)
+      ? completedItinerary.filter((item) => item !== id)
+      : [...completedItinerary, id];
+
+    setCompletedItinerary(nextCompletedItinerary);
+    void persistSharedTripToolkit({
+      tripTitle: selectedVisitTitle,
+      completedItinerary: nextCompletedItinerary,
+    });
   };
 
   const addItineraryItem = () => {
@@ -379,8 +445,8 @@ export function TripsScreen() {
       return;
     }
 
-    setItineraryItems((current) => [
-      ...current,
+    const nextItineraryItems = [
+      ...itineraryItems,
       {
         id: `itinerary-${Date.now()}`,
         visitTitle: selectedVisitTitle,
@@ -388,21 +454,41 @@ export function TripsScreen() {
         title,
         detail,
       },
-    ]);
+    ];
+
+    setItineraryItems(nextItineraryItems);
     setDraftTime("");
     setDraftTitle("");
     setDraftDetail("");
+    void persistSharedTripToolkit({
+      tripTitle: selectedVisitTitle,
+      itineraryItems: nextItineraryItems,
+    });
   };
 
   const removeItineraryItem = (id: string) => {
-    setItineraryItems((current) => current.filter((item) => item.id !== id));
-    setCompletedItinerary((current) => current.filter((item) => item !== id));
+    const nextItineraryItems = itineraryItems.filter((item) => item.id !== id);
+    const nextCompletedItinerary = completedItinerary.filter((item) => item !== id);
+
+    setItineraryItems(nextItineraryItems);
+    setCompletedItinerary(nextCompletedItinerary);
+    void persistSharedTripToolkit({
+      tripTitle: selectedVisitTitle,
+      itineraryItems: nextItineraryItems,
+      completedItinerary: nextCompletedItinerary,
+    });
   };
 
   const togglePackedItem = (id: string) => {
-    setPackedItems((current) =>
-      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
-    );
+    const nextPackedItems = packedItems.includes(id)
+      ? packedItems.filter((item) => item !== id)
+      : [...packedItems, id];
+
+    setPackedItems(nextPackedItems);
+    void persistSharedTripToolkit({
+      tripLocation: selectedPackingTrip,
+      packedItems: nextPackedItems,
+    });
   };
 
   const addPackingItem = () => {
@@ -412,22 +498,42 @@ export function TripsScreen() {
       return;
     }
 
-    setPackingItems((current) => [
-      ...current,
+    const nextPackingItems = [
+      ...packingItems,
       { id: `packing-${Date.now()}`, label, trip: selectedPackingTrip },
-    ]);
+    ];
+
+    setPackingItems(nextPackingItems);
     setDraftPackingLabel("");
+    void persistSharedTripToolkit({
+      tripLocation: selectedPackingTrip,
+      packingItems: nextPackingItems,
+    });
   };
 
   const updatePackingItem = (id: string, value: string) => {
-    setPackingItems((current) =>
-      current.map((item) => (item.id === id ? { ...item, label: value } : item))
+    const nextPackingItems = packingItems.map((item) =>
+      item.id === id ? { ...item, label: value } : item
     );
+
+    setPackingItems(nextPackingItems);
+    void persistSharedTripToolkit({
+      tripLocation: selectedPackingTrip,
+      packingItems: nextPackingItems,
+    });
   };
 
   const removePackingItem = (id: string) => {
-    setPackingItems((current) => current.filter((item) => item.id !== id));
-    setPackedItems((current) => current.filter((item) => item !== id));
+    const nextPackingItems = packingItems.filter((item) => item.id !== id);
+    const nextPackedItems = packedItems.filter((item) => item !== id);
+
+    setPackingItems(nextPackingItems);
+    setPackedItems(nextPackedItems);
+    void persistSharedTripToolkit({
+      tripLocation: selectedPackingTrip,
+      packingItems: nextPackingItems,
+      packedItems: nextPackedItems,
+    });
   };
 
   const addFlightWindow = () => {
@@ -444,8 +550,8 @@ export function TripsScreen() {
       return;
     }
 
-    setFlightWindows((current) => [
-      ...current,
+    const nextFlightWindows = [
+      ...flightWindows,
       {
         id: `flight-${Date.now()}`,
         trip: selectedFlightTrip,
@@ -454,15 +560,27 @@ export function TripsScreen() {
         price,
         note: note || undefined,
       },
-    ]);
+    ];
+
+    setFlightWindows(nextFlightWindows);
     setDraftFlightStartDate("");
     setDraftFlightEndDate("");
     setDraftFlightPrice("");
     setDraftFlightNote("");
+    void persistSharedTripToolkit({
+      tripLocation: selectedFlightTrip,
+      flightWindows: nextFlightWindows,
+    });
   };
 
   const removeFlightWindow = (id: string) => {
-    setFlightWindows((current) => current.filter((item) => item.id !== id));
+    const nextFlightWindows = flightWindows.filter((item) => item.id !== id);
+
+    setFlightWindows(nextFlightWindows);
+    void persistSharedTripToolkit({
+      tripLocation: selectedFlightTrip,
+      flightWindows: nextFlightWindows,
+    });
   };
 
   const addTrackedFlightLeg = () => {
@@ -531,9 +649,15 @@ export function TripsScreen() {
   };
 
   const addBudgetItem = (item: BudgetItem) => {
-    setBudgetItems((current) =>
-      current.some((entry) => entry.id === item.id) ? current : [...current, item]
-    );
+    const nextBudgetItems = budgetItems.some((entry) => entry.id === item.id)
+      ? budgetItems
+      : [...budgetItems, item];
+
+    setBudgetItems(nextBudgetItems);
+    void persistSharedTripToolkit({
+      tripLocation: selectedBudgetTrip,
+      budgetItems: nextBudgetItems,
+    });
   };
 
   const addCustomBudgetItem = () => {
@@ -546,8 +670,8 @@ export function TripsScreen() {
       return;
     }
 
-    setBudgetItems((current) => [
-      ...current,
+    const nextBudgetItems = [
+      ...budgetItems,
       {
         id: `budget-${Date.now()}`,
         label,
@@ -556,11 +680,17 @@ export function TripsScreen() {
         amount,
         trip: selectedBudgetTrip,
       },
-    ]);
+    ];
+
+    setBudgetItems(nextBudgetItems);
     setDraftBudgetLabel("");
     setDraftBudgetCategory("");
     setDraftBudgetPayer("");
     setDraftBudgetAmount("");
+    void persistSharedTripToolkit({
+      tripLocation: selectedBudgetTrip,
+      budgetItems: nextBudgetItems,
+    });
   };
 
   const updateBudgetItem = (
@@ -568,36 +698,58 @@ export function TripsScreen() {
     field: "label" | "category" | "payer" | "amount",
     value: string
   ) => {
-    setBudgetItems((current) =>
-      current.map((item) => {
-        if (item.id !== id) {
-          return item;
-        }
+    const nextBudgetItems = budgetItems.map((item) => {
+      if (item.id !== id) {
+        return item;
+      }
 
-        if (field === "amount") {
-          const numericValue = Number.parseFloat(value);
-          return { ...item, amount: Number.isNaN(numericValue) ? 0 : numericValue };
-        }
+      if (field === "amount") {
+        const numericValue = Number.parseFloat(value);
+        return { ...item, amount: Number.isNaN(numericValue) ? 0 : numericValue };
+      }
 
-        return { ...item, [field]: value };
-      })
-    );
+      return { ...item, [field]: value };
+    });
+
+    setBudgetItems(nextBudgetItems);
+    void persistSharedTripToolkit({
+      tripLocation: selectedBudgetTrip,
+      budgetItems: nextBudgetItems,
+    });
   };
 
   const removeBudgetItem = (id: string) => {
-    setBudgetItems((current) => current.filter((item) => item.id !== id));
+    const nextBudgetItems = budgetItems.filter((item) => item.id !== id);
+
+    setBudgetItems(nextBudgetItems);
+    void persistSharedTripToolkit({
+      tripLocation: selectedBudgetTrip,
+      budgetItems: nextBudgetItems,
+    });
   };
 
   const closeBudgetTrip = () => {
-    setClosedBudgetTrips((current) =>
-      current.includes(selectedBudgetTrip) ? current : [...current, selectedBudgetTrip]
-    );
+    const nextClosedBudgetTrips = closedBudgetTrips.includes(selectedBudgetTrip)
+      ? closedBudgetTrips
+      : [...closedBudgetTrips, selectedBudgetTrip];
+
+    setClosedBudgetTrips(nextClosedBudgetTrips);
+    void persistSharedTripToolkit({
+      tripLocation: selectedBudgetTrip,
+      closedBudgetTrips: nextClosedBudgetTrips,
+    });
   };
 
   const reopenBudgetTrip = () => {
-    setClosedBudgetTrips((current) =>
-      current.filter((trip) => trip !== selectedBudgetTrip)
+    const nextClosedBudgetTrips = closedBudgetTrips.filter(
+      (trip) => trip !== selectedBudgetTrip
     );
+
+    setClosedBudgetTrips(nextClosedBudgetTrips);
+    void persistSharedTripToolkit({
+      tripLocation: selectedBudgetTrip,
+      closedBudgetTrips: nextClosedBudgetTrips,
+    });
   };
 
   const loadTripIntoEditor = (tripId: string) => {
@@ -658,13 +810,63 @@ export function TripsScreen() {
       hasSharedTripParticipant(nextTrip.participantIds);
 
     if (shouldSaveSharedTrip && user?.id) {
+      const nextItineraryItems = existingTrip
+        ? itineraryItems.map((item) =>
+            item.visitTitle === existingTrip.title
+              ? { ...item, visitTitle: nextTrip.title }
+              : item
+          )
+        : itineraryItems;
+      const nextPackingItems = existingTrip
+        ? packingItems.map((item) =>
+            item.trip === existingTrip.location ? { ...item, trip: nextTrip.location } : item
+          )
+        : packingItems;
+      const nextFlightWindows = existingTrip
+        ? flightWindows.map((item) =>
+            item.trip === existingTrip.location ? { ...item, trip: nextTrip.location } : item
+          )
+        : flightWindows;
+      const nextBudgetItems = existingTrip
+        ? budgetItems.map((item) =>
+            item.trip === existingTrip.location ? { ...item, trip: nextTrip.location } : item
+          )
+        : budgetItems;
+      const nextClosedBudgetTrips = existingTrip
+        ? closedBudgetTrips.map((trip) =>
+            trip === existingTrip.location ? nextTrip.location : trip
+          )
+        : closedBudgetTrips;
+      const relevantItineraryItems = nextItineraryItems.filter(
+        (item) => item.visitTitle === nextTrip.title
+      );
+      const relevantItineraryIds = new Set(relevantItineraryItems.map((item) => item.id));
+      const relevantPackingItems = nextPackingItems.filter(
+        (item) => item.trip === nextTrip.location
+      );
+      const relevantPackingIds = new Set(relevantPackingItems.map((item) => item.id));
       const savedTrip = await saveSharedVisitPlan({
         userId: user.id,
         trip: nextTrip,
+        itineraryItems: relevantItineraryItems,
+        completedItinerary: completedItinerary.filter((id) => relevantItineraryIds.has(id)),
+        flightWindows: nextFlightWindows.filter((item) => item.trip === nextTrip.location),
+        packingItems: relevantPackingItems,
+        packedItems: packedItems.filter((id) => relevantPackingIds.has(id)),
+        budgetItems: nextBudgetItems.filter((item) => item.trip === nextTrip.location),
+        budgetClosed: nextClosedBudgetTrips.includes(nextTrip.location),
       });
 
       if (!savedTrip) {
         return;
+      }
+
+      if (existingTrip) {
+        setItineraryItems(nextItineraryItems);
+        setPackingItems(nextPackingItems);
+        setFlightWindows(nextFlightWindows);
+        setBudgetItems(nextBudgetItems);
+        setClosedBudgetTrips(nextClosedBudgetTrips);
       }
 
       if (existingTrip) {
