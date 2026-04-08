@@ -44,6 +44,7 @@ import {
   fetchSharedTimeCapsules,
 } from "../lib/sharedContent";
 import { fetchSharedConnections, isSharedConnection } from "../lib/sharedRelationships";
+import { fetchSharedVisitPlans } from "../lib/sharedTrips";
 import { useAuth } from "./AuthProvider";
 
 interface AppDataContextValue {
@@ -187,13 +188,14 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
       try {
         if (shouldUseSupabaseState && user?.id) {
-          const [sharedConnections, sharedMessages, sharedJournalEntries, sharedTimeCapsules, sharedCalendarEvents] =
+          const [sharedConnections, sharedMessages, sharedJournalEntries, sharedTimeCapsules, sharedCalendarEvents, sharedVisitPlans] =
             await Promise.all([
               fetchSharedConnections(user.id).catch(() => []),
               fetchSharedMessages(user.id).catch(() => []),
               fetchSharedJournalEntries(user.id).catch(() => []),
               fetchSharedTimeCapsules(user.id).catch(() => []),
               fetchSharedCalendarEvents(user.id).catch(() => []),
+              fetchSharedVisitPlans(user.id).catch(() => []),
             ]);
           const workspace = await loadWorkspaceState(user.id);
           const parsed = workspace?.app_data;
@@ -231,7 +233,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
               setCheckInPrompts(
                 Array.isArray(parsed.checkInPrompts) ? (parsed.checkInPrompts as CheckInPrompt[]) : []
               );
-              setVisitPlans(Array.isArray(parsed.visitPlans) ? (parsed.visitPlans as VisitPlan[]) : []);
+              setVisitPlans(
+                mergeById(
+                  Array.isArray(parsed.visitPlans) ? (parsed.visitPlans as VisitPlan[]) : [],
+                  sharedVisitPlans
+                )
+              );
               setItineraryItems(
                 Array.isArray(parsed.itineraryItems) ? (parsed.itineraryItems as ItineraryItem[]) : []
               );
@@ -269,7 +276,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
             setCalendarEvents(mergeById(blankWorkspace.calendarEvents, sharedCalendarEvents));
             setMessages(mergeById(blankWorkspace.messages, sharedMessages));
             setCheckInPrompts(blankWorkspace.checkInPrompts);
-            setVisitPlans(blankWorkspace.visitPlans);
+            setVisitPlans(mergeById(blankWorkspace.visitPlans, sharedVisitPlans));
             setItineraryItems(blankWorkspace.itineraryItems);
             setCompletedItinerary(blankWorkspace.completedItinerary);
             setFlightWindows(blankWorkspace.flightWindows);
@@ -371,7 +378,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       calendarEvents: withoutRemoteSharedItems(calendarEvents),
       messages: withoutRemoteSharedItems(messages),
       checkInPrompts,
-      visitPlans,
+      visitPlans: withoutRemoteSharedItems(visitPlans),
       itineraryItems,
       completedItinerary,
       flightWindows,

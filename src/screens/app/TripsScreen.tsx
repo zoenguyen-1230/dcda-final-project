@@ -5,6 +5,7 @@ import { FilterChip } from "../../components/ui/FilterChip";
 import { MultiSelectDropdown } from "../../components/ui/MultiSelectDropdown";
 import { ScreenSurface } from "../../components/ui/ScreenSurface";
 import { SectionCard } from "../../components/ui/SectionCard";
+import { hasSupabaseCredentials } from "../../config/env";
 import {
   budgetSuggestions,
   cityWeatherForecasts,
@@ -16,7 +17,10 @@ import {
   getMonthNames,
   parseDateValue,
 } from "../../lib/dateHelpers";
+import { isSharedConnection } from "../../lib/sharedRelationships";
+import { deleteSharedVisitPlan, saveSharedVisitPlan } from "../../lib/sharedTrips";
 import { useAppData } from "../../providers/AppDataProvider";
+import { useAuth } from "../../providers/AuthProvider";
 import { BudgetItem, FlightLeg, VisitPlan } from "../../types";
 import { palette } from "../../theme/palette";
 import { typography } from "../../theme/typography";
@@ -124,6 +128,7 @@ function buildFallbackForecast(city: string) {
 }
 
 export function TripsScreen() {
+  const { user } = useAuth();
   const {
     connections,
     visitPlans,
@@ -352,6 +357,10 @@ export function TripsScreen() {
   const trackedFlightPersonName =
     liveConnections.find((connection) => connection.id === draftTrackedFlightConnectionId)?.name ??
     "Choose person";
+  const selectedTrip = trips.find((trip) => trip.id === selectedTripId) ?? null;
+  const isSharedTrip = Boolean(selectedTrip?.id.startsWith("remote-visit-"));
+  const hasSharedTripParticipant = (participantIds: string[]) =>
+    participantIds.some((participantId) => isSharedConnection(participantId));
 
   const toggleItinerary = (id: string) => {
     setCompletedItinerary((current) =>
@@ -613,7 +622,7 @@ export function TripsScreen() {
     setOpenTripParticipantMenu(false);
   };
 
-  const saveTrip = () => {
+  const saveTrip = async () => {
     const title = tripDraftTitle.trim();
     const location = tripDraftLocation.trim();
     const startDate = tripDraftStartDate.trim();
@@ -642,6 +651,41 @@ export function TripsScreen() {
       participantIds: tripDraftParticipantIds,
       archived: existingTrip?.archived ?? false,
     };
+
+    const shouldSaveSharedTrip =
+      Boolean(user?.id) &&
+      hasSupabaseCredentials &&
+      hasSharedTripParticipant(nextTrip.participantIds);
+
+    if (shouldSaveSharedTrip && user?.id) {
+      const savedTrip = await saveSharedVisitPlan({
+        userId: user.id,
+        trip: nextTrip,
+      });
+
+      if (!savedTrip) {
+        return;
+      }
+
+      if (existingTrip) {
+        setVisitPlans((current) =>
+          current.map((trip) => (trip.id === existingTrip.id ? savedTrip : trip))
+        );
+        setSelectedTripId(savedTrip.id);
+      } else {
+        setVisitPlans((current) => [...current, savedTrip]);
+        setIsCreatingTrip(false);
+        setSelectedTripId(savedTrip.id);
+      }
+
+      setSelectedVisitTitle(savedTrip.title);
+      setSelectedPackingTrip(savedTrip.location);
+      setSelectedFlightTrip(savedTrip.location);
+      setSelectedTrackedFlightTrip(savedTrip.location);
+      setSelectedBudgetTrip(savedTrip.location);
+      setOpenTripParticipantMenu(false);
+      return;
+    }
 
     if (existingTrip) {
       setVisitPlans((current) =>
@@ -731,7 +775,7 @@ export function TripsScreen() {
 
     const archivedTrip = trips.find((trip) => trip.id === selectedTripId);
 
-    if (!archivedTrip) {
+    if (!archivedTrip || archivedTrip.id.startsWith("remote-visit-")) {
       return;
     }
 
@@ -768,7 +812,7 @@ export function TripsScreen() {
     loadTripIntoEditor(tripId);
   };
 
-  const deleteTrip = () => {
+  const deleteTrip = async () => {
     if (!selectedTripId) {
       return;
     }
@@ -777,6 +821,10 @@ export function TripsScreen() {
 
     if (!tripToDelete) {
       return;
+    }
+
+    if (tripToDelete.id.startsWith("remote-visit-")) {
+      await deleteSharedVisitPlan(tripToDelete.id);
     }
 
     setVisitPlans((current) => current.filter((trip) => trip.id !== selectedTripId));
@@ -1086,9 +1134,15 @@ export function TripsScreen() {
           </View>
           {isEditingExistingTrip ? (
             <View style={styles.rowMeta}>
-              <TouchableOpacity style={styles.secondaryAction} onPress={archiveTrip}>
-                <Text style={styles.secondaryActionText}>Archive trip</Text>
-              </TouchableOpacity>
+              {isSharedTrip ? (
+                <Text style={styles.helperMeta}>
+                  Shared trips stay active for both people.
+                </Text>
+              ) : (
+                <TouchableOpacity style={styles.secondaryAction} onPress={archiveTrip}>
+                  <Text style={styles.secondaryActionText}>Archive trip</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity style={styles.removeButton} onPress={deleteTrip}>
                 <Text style={styles.removeButtonText}>Delete trip</Text>
               </TouchableOpacity>
