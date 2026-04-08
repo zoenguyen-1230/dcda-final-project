@@ -80,6 +80,7 @@ interface AppDataContextValue {
   setBudgetItems: React.Dispatch<React.SetStateAction<BudgetItem[]>>;
   closedBudgetTrips: string[];
   setClosedBudgetTrips: React.Dispatch<React.SetStateAction<string[]>>;
+  persistAppDataNow: (overrides?: Partial<StoredAppData>) => Promise<void>;
 }
 
 const AppDataContext = createContext<AppDataContextValue | undefined>(undefined);
@@ -206,6 +207,40 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const [packedItems, setPackedItems] = useState<string[]>([]);
   const [budgetItems, setBudgetItems] = useState<BudgetItem[]>([]);
   const [closedBudgetTrips, setClosedBudgetTrips] = useState<string[]>([]);
+
+  const buildPayload = (overrides?: Partial<StoredAppData>): StoredAppData => ({
+    connections: overrides?.connections ?? withoutSharedConnections(connections),
+    journalEntries: overrides?.journalEntries ?? withoutRemoteSharedItems(journalEntries),
+    timeCapsules: overrides?.timeCapsules ?? withoutRemoteSharedItems(timeCapsules),
+    calendarEvents: overrides?.calendarEvents ?? withoutRemoteSharedItems(calendarEvents),
+    messages: overrides?.messages ?? withoutRemoteSharedItems(messages),
+    checkInPrompts: overrides?.checkInPrompts ?? checkInPrompts,
+    visitPlans: overrides?.visitPlans ?? withoutRemoteSharedItems(visitPlans),
+    itineraryItems: overrides?.itineraryItems ?? withoutRemoteSharedItems(itineraryItems),
+    completedItinerary:
+      overrides?.completedItinerary ??
+      completedItinerary.filter((itemId) => !itemId.startsWith("remote-")),
+    flightWindows: overrides?.flightWindows ?? withoutRemoteSharedItems(flightWindows),
+    trackedFlights: overrides?.trackedFlights ?? trackedFlights,
+    packingItems: overrides?.packingItems ?? withoutRemoteSharedItems(packingItems),
+    packedItems:
+      overrides?.packedItems ?? packedItems.filter((itemId) => !itemId.startsWith("remote-")),
+    budgetItems: overrides?.budgetItems ?? withoutRemoteSharedItems(budgetItems),
+    closedBudgetTrips: overrides?.closedBudgetTrips ?? closedBudgetTrips,
+  });
+
+  const persistAppDataNow = async (overrides?: Partial<StoredAppData>) => {
+    const payload = buildPayload(overrides);
+
+    if (storageKey) {
+      writeBrowserStorage(storageKey, JSON.stringify(payload));
+      await AsyncStorage.setItem(storageKey, JSON.stringify(payload));
+    }
+
+    if (shouldUseSupabaseState && user?.id) {
+      await saveWorkspaceAppData(user.id, payload);
+    }
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -449,23 +484,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const payload: StoredAppData = {
-      connections: withoutSharedConnections(connections),
-      journalEntries: withoutRemoteSharedItems(journalEntries),
-      timeCapsules: withoutRemoteSharedItems(timeCapsules),
-      calendarEvents: withoutRemoteSharedItems(calendarEvents),
-      messages: withoutRemoteSharedItems(messages),
-      checkInPrompts,
-      visitPlans: withoutRemoteSharedItems(visitPlans),
-      itineraryItems: withoutRemoteSharedItems(itineraryItems),
-      completedItinerary: completedItinerary.filter((itemId) => !itemId.startsWith("remote-")),
-      flightWindows: withoutRemoteSharedItems(flightWindows),
-      trackedFlights,
-      packingItems: withoutRemoteSharedItems(packingItems),
-      packedItems: packedItems.filter((itemId) => !itemId.startsWith("remote-")),
-      budgetItems: withoutRemoteSharedItems(budgetItems),
-      closedBudgetTrips,
-    };
+    const payload = buildPayload();
 
     if (shouldUseSupabaseState && user?.id) {
       if (storageKey) {
@@ -539,6 +558,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       setBudgetItems,
       closedBudgetTrips,
       setClosedBudgetTrips,
+      persistAppDataNow,
     }),
     [
       budgetItems,
@@ -553,6 +573,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       journalEntries,
       messages,
       packedItems,
+      persistAppDataNow,
       packingItems,
       timeCapsules,
       trackedFlights,

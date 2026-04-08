@@ -60,7 +60,7 @@ const socialVisuals: Record<
 };
 export function ConnectionsScreen() {
   const { isDemoMode, user, userEmail } = useAuth();
-  const { connections, setConnections } = useAppData();
+  const { connections, setConnections, persistAppDataNow } = useAppData();
   const { profile, saveProfile } = useProfile();
   const [selectedFilter, setSelectedFilter] = useState<ConnectionFilter>(
     isDemoMode ? "partner" : "all"
@@ -281,16 +281,21 @@ export function ConnectionsScreen() {
       photoUri: draftPhotoUri.trim() || undefined,
     };
 
+    let nextConnections: Connection[];
+
     if (existingConnection) {
-      setConnections((current) =>
-        current.map((item) => (item.id === existingConnection.id ? nextConnection : item))
+      nextConnections = connections.map((item) =>
+        item.id === existingConnection.id ? nextConnection : item
       );
+      setConnections(nextConnections);
       setSelectedPersonId(existingConnection.id);
     } else {
-      setConnections((current) => [...current, nextConnection]);
+      nextConnections = [...connections, nextConnection];
+      setConnections(nextConnections);
       setSelectedPersonId(nextConnection.id);
     }
 
+    void persistAppDataNow({ connections: nextConnections });
     setEditorVisible(false);
   };
 
