@@ -107,7 +107,7 @@ export async function fetchIncomingInvites(userEmail: string): Promise<Relations
   const { data, error } = await supabase
     .from("relationship_invites")
     .select(
-      "id, sender_id, recipient_email, recipient_name, relationship_type, note, status, created_at, sender:profiles!relationship_invites_sender_id_fkey(full_name)"
+      "id, sender_id, recipient_email, recipient_name, relationship_type, note, status, created_at"
     )
     .eq("recipient_email", userEmail.trim().toLowerCase())
     .order("created_at", { ascending: false });
@@ -119,13 +119,7 @@ export async function fetchIncomingInvites(userEmail: string): Promise<Relations
   return (data ?? []).map((invite) => ({
     id: invite.id,
     senderId: invite.sender_id,
-    senderName:
-      (
-        Array.isArray(invite.sender)
-          ? (invite.sender[0] as { full_name?: string } | undefined)?.full_name
-          : (invite.sender as { full_name?: string } | null | undefined)?.full_name
-      ) ||
-      "Someone",
+    senderName: "Someone",
     recipientEmail: invite.recipient_email,
     recipientName: invite.recipient_name || "",
     relationshipType: invite.relationship_type as RelationshipType,
