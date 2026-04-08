@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { hasSupabaseCredentials } from "../config/env";
+import { readBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
 import { CurrentUserProfile, SocialPlatform } from "../types";
 import { loadWorkspaceState, saveWorkspaceProfile } from "../lib/workspaceState";
 import { useAuth } from "./AuthProvider";
@@ -81,13 +82,16 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       try {
         if (shouldUseSupabaseProfile && user?.id) {
           const defaultProfile = buildDefaultProfile(userEmail, displayName);
+          const browserSavedValue = readBrowserStorage(storageKey);
           const [workspace, savedValue] = await Promise.all([
             loadWorkspaceState(user.id),
             storageKey ? AsyncStorage.getItem(storageKey) : Promise.resolve(null),
           ]);
-          const localSavedProfile = savedValue
-            ? (JSON.parse(savedValue) as Partial<CurrentUserProfile>)
-            : null;
+          const localSavedProfile = browserSavedValue
+            ? (JSON.parse(browserSavedValue) as Partial<CurrentUserProfile>)
+            : savedValue
+              ? (JSON.parse(savedValue) as Partial<CurrentUserProfile>)
+              : null;
           const savedProfile = hasMeaningfulProfileData(workspace?.profile_data)
             ? workspace?.profile_data
             : localSavedProfile;
@@ -162,6 +166,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     });
 
     if (storageKey) {
+      writeBrowserStorage(storageKey, JSON.stringify(nextProfile));
       await AsyncStorage.setItem(storageKey, JSON.stringify(nextProfile));
     }
 

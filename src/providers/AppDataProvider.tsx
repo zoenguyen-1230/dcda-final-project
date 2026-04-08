@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { hasSupabaseCredentials } from "../config/env";
+import { readBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
 import {
   calendarEvents as seedCalendarEvents,
   checkInPrompts as seedCheckInPrompts,
@@ -234,7 +235,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
             loadWorkspaceState(user.id),
             storageKey ? AsyncStorage.getItem(storageKey) : Promise.resolve(null),
           ]);
-          const localParsed = savedValue ? (JSON.parse(savedValue) as Partial<StoredAppData>) : null;
+          const browserSavedValue = readBrowserStorage(storageKey);
+          const localParsed = browserSavedValue
+            ? (JSON.parse(browserSavedValue) as Partial<StoredAppData>)
+            : savedValue
+              ? (JSON.parse(savedValue) as Partial<StoredAppData>)
+              : null;
           const parsed = hasMeaningfulAppData(workspace?.app_data)
             ? workspace?.app_data
             : localParsed;
@@ -463,6 +469,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
     if (shouldUseSupabaseState && user?.id) {
       if (storageKey) {
+        writeBrowserStorage(storageKey, JSON.stringify(payload));
         void AsyncStorage.setItem(storageKey, JSON.stringify(payload));
       }
       void saveWorkspaceAppData(user.id, payload).catch(() => {
@@ -475,6 +482,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    writeBrowserStorage(storageKey, JSON.stringify(payload));
     void AsyncStorage.setItem(storageKey, JSON.stringify(payload));
   }, [
     calendarEvents,
