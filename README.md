@@ -1,14 +1,20 @@
 # Same Time
 
-`Same Time` is a mobile app concept for long-distance relationships across the full spectrum: romantic partners, close friends, siblings, parents, and chosen family. The name comes from the feeling behind “same time next week?”:
+*So same time next week?*
 
-- distance does not have to end the ritual
-- life can still be shared, updated, and planned together
-- connection can stay active through memory, routine, anticipation, and care
+`Same Time` is a space for long-distance relationships of all kinds: romantic, platonic, familial, and chosen. It is for the people you still want to keep close even when life happens in different cities, time zones, and routines.
 
-The core idea is that staying close is not only about messaging. It also comes from ritual, emotional visibility, shared memory, and planning future time together.
+It comes from a simple feeling:
 
-This starter repo now gives you a structured Expo + React Native foundation with:
+- the partner you still want to fall asleep talking to
+- the friend you still want to debrief with after a long day
+- the sibling, parent, or family member you still want woven into the rhythm of the week
+
+`Same Time` is built around the belief that closeness is not only made through constant conversation. Sometimes it lives in the small rituals: a check-in prompt, a saved photo, a voice note on the way home, a plan for the next visit, a letter written now for someone to open later.
+
+Distance changes the shape of togetherness, but it does not have to end it. This app is designed to help people keep showing up for one another through presence, routine, memory, and anticipation.
+
+This project currently includes a structured Expo + React Native foundation with:
 
 - authentication entry flow
 - Supabase-ready auth wiring with a demo fallback when env keys are missing
@@ -152,9 +158,7 @@ Expo Hosting uses immutable deployments plus aliases. The `draft` alias will alw
 
 ## GitHub
 
-This repo is currently connected to GitHub. If you rename the repository to match the product brand, update this section and the local `origin` remote to the new URL.
-
-The recommended collaboration workflow is:
+This repo is connected to GitHub, and the recommended collaboration workflow is:
 
 1. Pull latest `main`
 2. Create a short feature branch
