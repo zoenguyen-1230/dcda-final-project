@@ -20,6 +20,26 @@ interface ProfileContextValue {
 
 const defaultLinkedSocials: SocialPlatform[] = [];
 
+function getProfileStorageKey(userEmail: string | null) {
+  return userEmail ? `same-time-profile:${userEmail}` : null;
+}
+
+function hasMeaningfulProfileData(profile: Partial<CurrentUserProfile> | null | undefined) {
+  if (!profile) {
+    return false;
+  }
+
+  return Boolean(
+    profile.displayName ||
+      profile.location ||
+      profile.timezone ||
+      profile.relationshipFocus ||
+      profile.note ||
+      profile.photoUri ||
+      (Array.isArray(profile.linkedSocials) && profile.linkedSocials.length)
+  );
+}
+
 function buildDefaultProfile(
   userEmail: string | null,
   displayName: string | null
@@ -40,6 +60,7 @@ const ProfileContext = createContext<ProfileContextValue | undefined>(undefined)
 export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const { user, userEmail, displayName, previewMode } = useAuth();
   const shouldUseSupabaseProfile = Boolean(user?.id && hasSupabaseCredentials && !previewMode);
+  const storageKey = getProfileStorageKey(userEmail);
   const [initialized, setInitialized] = useState(false);
   const [profile, setProfile] = useState<CurrentUserProfile>(
     buildDefaultProfile(userEmail, displayName)
@@ -59,9 +80,17 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
       try {
         if (shouldUseSupabaseProfile && user?.id) {
-          const workspace = await loadWorkspaceState(user.id);
           const defaultProfile = buildDefaultProfile(userEmail, displayName);
-          const savedProfile = workspace?.profile_data;
+          const [workspace, savedValue] = await Promise.all([
+            loadWorkspaceState(user.id),
+            storageKey ? AsyncStorage.getItem(storageKey) : Promise.resolve(null),
+          ]);
+          const localSavedProfile = savedValue
+            ? (JSON.parse(savedValue) as Partial<CurrentUserProfile>)
+            : null;
+          const savedProfile = hasMeaningfulProfileData(workspace?.profile_data)
+            ? workspace?.profile_data
+            : localSavedProfile;
 
           startTransition(() => {
             setProfile({
@@ -88,8 +117,8 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        const storageKey = `same-time-profile:${userEmail}`;
-        const savedValue = await AsyncStorage.getItem(storageKey);
+        const fallbackStorageKey = `same-time-profile:${userEmail}`;
+        const savedValue = await AsyncStorage.getItem(fallbackStorageKey);
         const defaultProfile = buildDefaultProfile(userEmail, displayName);
 
         if (savedValue) {
@@ -125,26 +154,25 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     };
 
     void loadProfile();
-  }, [displayName, shouldUseSupabaseProfile, user?.id, userEmail]);
+  }, [displayName, shouldUseSupabaseProfile, storageKey, user?.id, userEmail]);
 
   const saveProfile = async (nextProfile: CurrentUserProfile) => {
     startTransition(() => {
       setProfile(nextProfile);
     });
 
+    if (storageKey) {
+      await AsyncStorage.setItem(storageKey, JSON.stringify(nextProfile));
+    }
+
     if (shouldUseSupabaseProfile && user?.id) {
       await saveWorkspaceProfile(user.id, nextProfile);
       return;
     }
 
-    if (!userEmail) {
+    if (!storageKey) {
       return;
     }
-
-    await AsyncStorage.setItem(
-      `same-time-profile:${userEmail}`,
-      JSON.stringify(nextProfile)
-    );
   };
 
   const value = useMemo<ProfileContextValue>(

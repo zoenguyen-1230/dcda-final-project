@@ -135,6 +135,30 @@ function buildDefaultData(mode: "filled" | "blank"): StoredAppData {
   };
 }
 
+function hasMeaningfulAppData(appData: Partial<StoredAppData> | null | undefined) {
+  if (!appData) {
+    return false;
+  }
+
+  return Boolean(
+    appData.connections?.length ||
+      appData.journalEntries?.length ||
+      appData.timeCapsules?.length ||
+      appData.calendarEvents?.length ||
+      appData.messages?.length ||
+      appData.checkInPrompts?.length ||
+      appData.visitPlans?.length ||
+      appData.itineraryItems?.length ||
+      appData.completedItinerary?.length ||
+      appData.flightWindows?.length ||
+      appData.trackedFlights?.length ||
+      appData.packingItems?.length ||
+      appData.packedItems?.length ||
+      appData.budgetItems?.length ||
+      appData.closedBudgetTrips?.length
+  );
+}
+
 function mergeConnections(localConnections: Connection[], sharedConnections: Connection[]) {
   const byId = new Map<string, Connection>();
 
@@ -206,8 +230,14 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
                 closedBudgetTrips: [],
               })),
             ]);
-          const workspace = await loadWorkspaceState(user.id);
-          const parsed = workspace?.app_data;
+          const [workspace, savedValue] = await Promise.all([
+            loadWorkspaceState(user.id),
+            storageKey ? AsyncStorage.getItem(storageKey) : Promise.resolve(null),
+          ]);
+          const localParsed = savedValue ? (JSON.parse(savedValue) as Partial<StoredAppData>) : null;
+          const parsed = hasMeaningfulAppData(workspace?.app_data)
+            ? workspace?.app_data
+            : localParsed;
 
           if (parsed) {
             const localConnections = Array.isArray(parsed.connections)
@@ -432,6 +462,9 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     };
 
     if (shouldUseSupabaseState && user?.id) {
+      if (storageKey) {
+        void AsyncStorage.setItem(storageKey, JSON.stringify(payload));
+      }
       void saveWorkspaceAppData(user.id, payload).catch(() => {
         // Keep the UI responsive; local fallback still exists for demos.
       });
