@@ -191,7 +191,9 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const { user, userEmail, previewMode, isDemoMode } = useAuth();
   const storageKey = getStorageKey(userEmail, previewMode);
   const shouldUseSupabaseState = Boolean(user?.id && hasSupabaseCredentials && !previewMode);
+  const currentScopeKey = shouldUseSupabaseState && user?.id ? `cloud:${user.id}` : storageKey ?? "anonymous";
   const [initialized, setInitialized] = useState(false);
+  const [hydratedScopeKey, setHydratedScopeKey] = useState<string | null>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [timeCapsules, setTimeCapsules] = useState<TimeCapsule[]>([]);
@@ -244,6 +246,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const loadData = async () => {
+      setHydratedScopeKey(null);
       setInitialized(false);
 
       try {
@@ -372,6 +375,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
                   ])
                 )
               );
+              setHydratedScopeKey(currentScopeKey);
               setInitialized(true);
             });
             return;
@@ -398,6 +402,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
             setClosedBudgetTrips(
               Array.from(new Set([...blankWorkspace.closedBudgetTrips, ...sharedTripToolkit.closedBudgetTrips]))
             );
+            setHydratedScopeKey(currentScopeKey);
             setInitialized(true);
           });
           return;
@@ -442,6 +447,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
               setClosedBudgetTrips(
                 Array.isArray(parsed.closedBudgetTrips) ? parsed.closedBudgetTrips : []
               );
+              setHydratedScopeKey(currentScopeKey);
               setInitialized(true);
             });
             return;
@@ -472,15 +478,16 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         setPackedItems(nextData.packedItems);
         setBudgetItems(nextData.budgetItems);
         setClosedBudgetTrips(nextData.closedBudgetTrips);
+        setHydratedScopeKey(currentScopeKey);
         setInitialized(true);
       });
     };
 
     void loadData();
-  }, [isDemoMode, previewMode, shouldUseSupabaseState, storageKey, user?.id, userEmail]);
+  }, [currentScopeKey, isDemoMode, previewMode, shouldUseSupabaseState, storageKey, user?.id, userEmail]);
 
   useEffect(() => {
-    if (!initialized) {
+    if (!initialized || hydratedScopeKey !== currentScopeKey) {
       return;
     }
 
@@ -520,6 +527,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     messages,
     shouldUseSupabaseState,
     storageKey,
+    hydratedScopeKey,
+    currentScopeKey,
     timeCapsules,
     user?.id,
     visitPlans,
