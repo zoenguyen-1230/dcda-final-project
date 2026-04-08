@@ -54,20 +54,30 @@ export async function loadWorkspaceState(userId: string) {
 }
 
 export async function saveWorkspaceProfile(userId: string, profile: CurrentUserProfile) {
-  const existingState = await loadWorkspaceState(userId).catch(() => null);
-  const { error } = await supabase.from("workspace_state").upsert(
-    {
+  const { data: updatedRows, error: updateError } = await supabase
+    .from("workspace_state")
+    .update({
+      profile_data: profile,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", userId)
+    .select("user_id");
+
+  if (updateError) {
+    throw updateError;
+  }
+
+  if (!updatedRows?.length) {
+    const { error: insertError } = await supabase.from("workspace_state").insert({
       user_id: userId,
       profile_data: profile,
-      app_data: existingState?.app_data ?? {},
-    },
-    {
-      onConflict: "user_id",
-    }
-  );
+      app_data: {},
+      updated_at: new Date().toISOString(),
+    });
 
-  if (error) {
-    throw error;
+    if (insertError) {
+      throw insertError;
+    }
   }
 
   const { error: profileError } = await supabase
@@ -89,19 +99,29 @@ export async function saveWorkspaceProfile(userId: string, profile: CurrentUserP
 }
 
 export async function saveWorkspaceAppData(userId: string, appData: StoredAppData) {
-  const existingState = await loadWorkspaceState(userId).catch(() => null);
-  const { error } = await supabase.from("workspace_state").upsert(
-    {
-      user_id: userId,
-      profile_data: existingState?.profile_data ?? {},
+  const { data: updatedRows, error: updateError } = await supabase
+    .from("workspace_state")
+    .update({
       app_data: appData,
-    },
-    {
-      onConflict: "user_id",
-    }
-  );
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", userId)
+    .select("user_id");
 
-  if (error) {
-    throw error;
+  if (updateError) {
+    throw updateError;
+  }
+
+  if (!updatedRows?.length) {
+    const { error: insertError } = await supabase.from("workspace_state").insert({
+      user_id: userId,
+      profile_data: {},
+      app_data: appData,
+      updated_at: new Date().toISOString(),
+    });
+
+    if (insertError) {
+      throw insertError;
+    }
   }
 }

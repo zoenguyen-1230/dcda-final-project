@@ -2,16 +2,27 @@ import { supabase } from "./supabase";
 import { Connection, RelationshipInvite, RelationshipType } from "../types";
 
 export function buildSharedConnectionId(relationshipId: string, profileId: string) {
-  return `shared-${relationshipId}-${profileId}`;
+  return `shared::${relationshipId}::${profileId}`;
 }
 
 export function parseSharedConnectionId(connectionId: string) {
+  if (connectionId.startsWith("shared::")) {
+    const [, relationshipId, profileId] = connectionId.split("::");
+
+    if (!relationshipId || !profileId) {
+      return null;
+    }
+
+    return { relationshipId, profileId };
+  }
+
   if (!connectionId.startsWith("shared-")) {
     return null;
   }
 
-  const [, relationshipId, ...profileIdParts] = connectionId.split("-");
-  const profileId = profileIdParts.join("-");
+  const legacyPayload = connectionId.slice("shared-".length);
+  const relationshipId = legacyPayload.slice(0, 36);
+  const profileId = legacyPayload.slice(37);
 
   if (!relationshipId || !profileId) {
     return null;
@@ -39,7 +50,7 @@ export function isSharedConnection(connectionId: string) {
 export async function fetchSharedConnections(userId: string): Promise<Connection[]> {
   const { data: memberships, error: membershipError } = await supabase
     .from("relationship_members")
-    .select("relationship_id")
+    .select("relationship_id, profile_id")
     .eq("profile_id", userId);
 
   if (membershipError) {
@@ -52,6 +63,15 @@ export async function fetchSharedConnections(userId: string): Promise<Connection
 
   if (!relationshipIds.length) {
     return [];
+  }
+
+  const { data: members, error: memberError } = await supabase
+    .from("relationship_members")
+    .select("relationship_id, profile_id")
+    .in("relationship_id", relationshipIds);
+
+  if (memberError) {
+    throw memberError;
   }
 
   const { data: relationships, error: relationshipError } = await supabase
@@ -70,21 +90,29 @@ export async function fetchSharedConnections(userId: string): Promise<Connection
     ])
   );
 
-  const { data: members, error: memberError } = await supabase
-    .from("relationship_members")
-    .select(
-      "relationship_id, profile_id, profile:profiles!relationship_members_profile_id_fkey(id, full_name, location, timezone, note, photo_uri, avatar_url)"
-    )
-    .in("relationship_id", relationshipIds);
+  const peerMembers = (members ?? []).filter((member) => member.profile_id !== userId);
+  const peerIds = Array.from(new Set(peerMembers.map((member) => member.profile_id).filter(Boolean)));
 
-  if (memberError) {
-    throw memberError;
+  if (!peerIds.length) {
+    return [];
   }
 
-  return (members ?? [])
-    .filter((member) => member.profile_id !== userId)
+  const { data: profiles, error: profileError } = await supabase
+    .from("profiles")
+    .select("id, full_name, location, timezone, note, photo_uri, avatar_url")
+    .in("id", peerIds);
+
+  if (profileError) {
+    throw profileError;
+  }
+
+  const profileById = new Map(
+    (profiles ?? []).map((profile) => [profile.id, profile])
+  );
+
+  return peerMembers
     .map((member) => {
-      const profile = Array.isArray(member.profile) ? member.profile[0] : member.profile;
+      const profile = profileById.get(member.profile_id);
       const relationshipType = relationshipTypeById.get(member.relationship_id) ?? "friend";
 
       return {

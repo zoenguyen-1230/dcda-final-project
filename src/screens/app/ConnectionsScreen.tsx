@@ -346,8 +346,11 @@ export function ConnectionsScreen() {
   const handleAcceptInvite = async (inviteId: string) => {
     try {
       await acceptRelationshipInvite(inviteId);
-      await syncSharedConnections();
-      setIncomingInvites((current) => current.filter((invite) => invite.id !== inviteId));
+      const [nextIncomingInvites] = await Promise.all([
+        userEmail ? fetchIncomingInvites(userEmail) : Promise.resolve([]),
+        syncSharedConnections(),
+      ]);
+      setIncomingInvites(nextIncomingInvites.filter((invite) => invite.status === "pending"));
       setInviteFeedback("Invite accepted. Your shared space is now connected.");
     } catch (error) {
       setInviteFeedback(error instanceof Error ? error.message : "Invite could not be accepted.");
