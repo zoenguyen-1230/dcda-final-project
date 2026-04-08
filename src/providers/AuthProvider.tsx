@@ -36,6 +36,20 @@ function readPreviewMode(): PreviewMode {
     return null;
   }
 
+  const hostname = window.location.hostname.toLowerCase();
+
+  if (hostname.includes("--demo-filled.")) {
+    return "filled";
+  }
+
+  if (hostname.includes("--demo-blank.")) {
+    return "blank";
+  }
+
+  if (hostname.includes("--draft.")) {
+    return null;
+  }
+
   const hashValue = window.location.hash.replace(/^#/, "");
   const previewValue =
     new URLSearchParams(hashValue).get("preview") ??

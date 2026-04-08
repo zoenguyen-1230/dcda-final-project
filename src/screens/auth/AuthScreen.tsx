@@ -65,6 +65,18 @@ export function AuthScreen() {
     }
 
     const nextUrl = new URL(window.location.href);
+
+    if (nextUrl.hostname.includes("--draft.")) {
+      nextUrl.hostname = nextUrl.hostname.replace(
+        "--draft.",
+        previewMode === "filled" ? "--demo-filled." : "--demo-blank."
+      );
+      nextUrl.hash = "";
+      nextUrl.search = "";
+      window.location.href = nextUrl.toString();
+      return;
+    }
+
     nextUrl.hash = `preview=${previewMode}`;
     window.location.href = nextUrl.toString();
   };
