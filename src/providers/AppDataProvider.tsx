@@ -7,6 +7,7 @@ import React, {
   useState,
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { hasSupabaseCredentials } from "../config/env";
 import {
   calendarEvents as seedCalendarEvents,
   checkInPrompts as seedCheckInPrompts,
@@ -35,6 +36,7 @@ import {
   TimeCapsule,
   VisitPlan,
 } from "../types";
+import { loadWorkspaceState, saveWorkspaceAppData, type StoredAppData } from "../lib/workspaceState";
 import { useAuth } from "./AuthProvider";
 
 interface AppDataContextValue {
@@ -69,24 +71,6 @@ interface AppDataContextValue {
   setBudgetItems: React.Dispatch<React.SetStateAction<BudgetItem[]>>;
   closedBudgetTrips: string[];
   setClosedBudgetTrips: React.Dispatch<React.SetStateAction<string[]>>;
-}
-
-interface StoredAppData {
-  connections: Connection[];
-  journalEntries: JournalEntry[];
-  timeCapsules: TimeCapsule[];
-  calendarEvents: CalendarEvent[];
-  messages: Message[];
-  checkInPrompts: CheckInPrompt[];
-  visitPlans: VisitPlan[];
-  itineraryItems: ItineraryItem[];
-  completedItinerary: string[];
-  flightWindows: FlightWindow[];
-  trackedFlights: FlightTrackerEntry[];
-  packingItems: PackingItem[];
-  packedItems: string[];
-  budgetItems: BudgetItem[];
-  closedBudgetTrips: string[];
 }
 
 const AppDataContext = createContext<AppDataContextValue | undefined>(undefined);
@@ -144,8 +128,9 @@ function buildDefaultData(mode: "filled" | "blank"): StoredAppData {
 }
 
 export function AppDataProvider({ children }: { children: React.ReactNode }) {
-  const { userEmail, previewMode, isDemoMode } = useAuth();
+  const { user, userEmail, previewMode, isDemoMode } = useAuth();
   const storageKey = getStorageKey(userEmail, previewMode);
+  const shouldUseSupabaseState = Boolean(user?.id && hasSupabaseCredentials && !previewMode);
   const [initialized, setInitialized] = useState(false);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
@@ -168,6 +153,78 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       setInitialized(false);
 
       try {
+        if (shouldUseSupabaseState && user?.id) {
+          const workspace = await loadWorkspaceState(user.id);
+          const parsed = workspace?.app_data;
+
+          if (parsed) {
+            startTransition(() => {
+              setConnections(Array.isArray(parsed.connections) ? (parsed.connections as Connection[]) : []);
+              setJournalEntries(
+                Array.isArray(parsed.journalEntries) ? (parsed.journalEntries as JournalEntry[]) : []
+              );
+              setTimeCapsules(
+                Array.isArray(parsed.timeCapsules) ? (parsed.timeCapsules as TimeCapsule[]) : []
+              );
+              setCalendarEvents(
+                Array.isArray(parsed.calendarEvents) ? (parsed.calendarEvents as CalendarEvent[]) : []
+              );
+              setMessages(Array.isArray(parsed.messages) ? (parsed.messages as Message[]) : []);
+              setCheckInPrompts(
+                Array.isArray(parsed.checkInPrompts) ? (parsed.checkInPrompts as CheckInPrompt[]) : []
+              );
+              setVisitPlans(Array.isArray(parsed.visitPlans) ? (parsed.visitPlans as VisitPlan[]) : []);
+              setItineraryItems(
+                Array.isArray(parsed.itineraryItems) ? (parsed.itineraryItems as ItineraryItem[]) : []
+              );
+              setCompletedItinerary(
+                Array.isArray(parsed.completedItinerary) ? parsed.completedItinerary : []
+              );
+              setFlightWindows(
+                Array.isArray(parsed.flightWindows) ? (parsed.flightWindows as FlightWindow[]) : []
+              );
+              setTrackedFlights(
+                Array.isArray(parsed.trackedFlights)
+                  ? (parsed.trackedFlights as FlightTrackerEntry[])
+                  : []
+              );
+              setPackingItems(
+                Array.isArray(parsed.packingItems) ? (parsed.packingItems as PackingItem[]) : []
+              );
+              setPackedItems(Array.isArray(parsed.packedItems) ? parsed.packedItems : []);
+              setBudgetItems(
+                Array.isArray(parsed.budgetItems) ? (parsed.budgetItems as BudgetItem[]) : []
+              );
+              setClosedBudgetTrips(
+                Array.isArray(parsed.closedBudgetTrips) ? parsed.closedBudgetTrips : []
+              );
+              setInitialized(true);
+            });
+            return;
+          }
+
+          const blankWorkspace = buildDefaultData("blank");
+          startTransition(() => {
+            setConnections(blankWorkspace.connections);
+            setJournalEntries(blankWorkspace.journalEntries);
+            setTimeCapsules(blankWorkspace.timeCapsules);
+            setCalendarEvents(blankWorkspace.calendarEvents);
+            setMessages(blankWorkspace.messages);
+            setCheckInPrompts(blankWorkspace.checkInPrompts);
+            setVisitPlans(blankWorkspace.visitPlans);
+            setItineraryItems(blankWorkspace.itineraryItems);
+            setCompletedItinerary(blankWorkspace.completedItinerary);
+            setFlightWindows(blankWorkspace.flightWindows);
+            setTrackedFlights(blankWorkspace.trackedFlights);
+            setPackingItems(blankWorkspace.packingItems);
+            setPackedItems(blankWorkspace.packedItems);
+            setBudgetItems(blankWorkspace.budgetItems);
+            setClosedBudgetTrips(blankWorkspace.closedBudgetTrips);
+            setInitialized(true);
+          });
+          return;
+        }
+
         if (storageKey) {
           const savedValue = await AsyncStorage.getItem(storageKey);
 
@@ -242,10 +299,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     };
 
     void loadData();
-  }, [isDemoMode, previewMode, storageKey, userEmail]);
+  }, [isDemoMode, previewMode, shouldUseSupabaseState, storageKey, user?.id, userEmail]);
 
   useEffect(() => {
-    if (!initialized || !storageKey) {
+    if (!initialized) {
       return;
     }
 
@@ -267,6 +324,17 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       closedBudgetTrips,
     };
 
+    if (shouldUseSupabaseState && user?.id) {
+      void saveWorkspaceAppData(user.id, payload).catch(() => {
+        // Keep the UI responsive; local fallback still exists for demos.
+      });
+      return;
+    }
+
+    if (!storageKey) {
+      return;
+    }
+
     void AsyncStorage.setItem(storageKey, JSON.stringify(payload));
   }, [
     calendarEvents,
@@ -283,8 +351,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     initialized,
     journalEntries,
     messages,
+    shouldUseSupabaseState,
     storageKey,
     timeCapsules,
+    user?.id,
     visitPlans,
   ]);
 

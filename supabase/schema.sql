@@ -134,6 +134,20 @@ create table if not exists public.date_ideas (
   created_at timestamptz not null default timezone('utc', now())
 );
 
+alter table public.profiles
+  add column if not exists location text,
+  add column if not exists timezone text,
+  add column if not exists relationship_focus text,
+  add column if not exists note text,
+  add column if not exists photo_uri text;
+
+create table if not exists public.workspace_state (
+  user_id uuid primary key references public.profiles (id) on delete cascade,
+  profile_data jsonb not null default '{}'::jsonb,
+  app_data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -171,6 +185,7 @@ alter table public.time_capsules enable row level security;
 alter table public.calendar_events enable row level security;
 alter table public.visit_plans enable row level security;
 alter table public.date_ideas enable row level security;
+alter table public.workspace_state enable row level security;
 
 drop policy if exists "Users can read their own profile" on public.profiles;
 drop policy if exists "Users can update their own profile" on public.profiles;
@@ -200,6 +215,9 @@ drop policy if exists "Members can read visit plans" on public.visit_plans;
 drop policy if exists "Members can insert visit plans" on public.visit_plans;
 drop policy if exists "Members can read date ideas" on public.date_ideas;
 drop policy if exists "Members can insert date ideas" on public.date_ideas;
+drop policy if exists "Users can read their own workspace state" on public.workspace_state;
+drop policy if exists "Users can insert their own workspace state" on public.workspace_state;
+drop policy if exists "Users can update their own workspace state" on public.workspace_state;
 
 create policy "Users can read their own profile"
   on public.profiles
@@ -510,3 +528,19 @@ create policy "Members can insert date ideas"
       )
     )
   );
+
+create policy "Users can read their own workspace state"
+  on public.workspace_state
+  for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own workspace state"
+  on public.workspace_state
+  for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update their own workspace state"
+  on public.workspace_state
+  for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
