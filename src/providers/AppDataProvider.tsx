@@ -37,6 +37,12 @@ import {
   VisitPlan,
 } from "../types";
 import { loadWorkspaceState, saveWorkspaceAppData, type StoredAppData } from "../lib/workspaceState";
+import {
+  fetchSharedCalendarEvents,
+  fetchSharedJournalEntries,
+  fetchSharedMessages,
+  fetchSharedTimeCapsules,
+} from "../lib/sharedContent";
 import { fetchSharedConnections, isSharedConnection } from "../lib/sharedRelationships";
 import { useAuth } from "./AuthProvider";
 
@@ -142,6 +148,18 @@ function withoutSharedConnections(connections: Connection[]) {
   return connections.filter((connection) => !isSharedConnection(connection.id));
 }
 
+function mergeById<T extends { id: string }>(localItems: T[], sharedItems: T[]) {
+  const byId = new Map<string, T>();
+  [...localItems, ...sharedItems].forEach((item) => {
+    byId.set(item.id, item);
+  });
+  return Array.from(byId.values());
+}
+
+function withoutRemoteSharedItems<T extends { id: string }>(items: T[]) {
+  return items.filter((item) => !item.id.startsWith("remote-"));
+}
+
 export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const { user, userEmail, previewMode, isDemoMode } = useAuth();
   const storageKey = getStorageKey(userEmail, previewMode);
@@ -169,7 +187,14 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
       try {
         if (shouldUseSupabaseState && user?.id) {
-          const sharedConnections = await fetchSharedConnections(user.id).catch(() => []);
+          const [sharedConnections, sharedMessages, sharedJournalEntries, sharedTimeCapsules, sharedCalendarEvents] =
+            await Promise.all([
+              fetchSharedConnections(user.id).catch(() => []),
+              fetchSharedMessages(user.id).catch(() => []),
+              fetchSharedJournalEntries(user.id).catch(() => []),
+              fetchSharedTimeCapsules(user.id).catch(() => []),
+              fetchSharedCalendarEvents(user.id).catch(() => []),
+            ]);
           const workspace = await loadWorkspaceState(user.id);
           const parsed = workspace?.app_data;
 
@@ -180,15 +205,29 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
             startTransition(() => {
               setConnections(mergeConnections(localConnections, sharedConnections));
               setJournalEntries(
-                Array.isArray(parsed.journalEntries) ? (parsed.journalEntries as JournalEntry[]) : []
+                mergeById(
+                  Array.isArray(parsed.journalEntries) ? (parsed.journalEntries as JournalEntry[]) : [],
+                  sharedJournalEntries
+                )
               );
               setTimeCapsules(
-                Array.isArray(parsed.timeCapsules) ? (parsed.timeCapsules as TimeCapsule[]) : []
+                mergeById(
+                  Array.isArray(parsed.timeCapsules) ? (parsed.timeCapsules as TimeCapsule[]) : [],
+                  sharedTimeCapsules
+                )
               );
               setCalendarEvents(
-                Array.isArray(parsed.calendarEvents) ? (parsed.calendarEvents as CalendarEvent[]) : []
+                mergeById(
+                  Array.isArray(parsed.calendarEvents) ? (parsed.calendarEvents as CalendarEvent[]) : [],
+                  sharedCalendarEvents
+                )
               );
-              setMessages(Array.isArray(parsed.messages) ? (parsed.messages as Message[]) : []);
+              setMessages(
+                mergeById(
+                  Array.isArray(parsed.messages) ? (parsed.messages as Message[]) : [],
+                  sharedMessages
+                )
+              );
               setCheckInPrompts(
                 Array.isArray(parsed.checkInPrompts) ? (parsed.checkInPrompts as CheckInPrompt[]) : []
               );
@@ -225,10 +264,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           const blankWorkspace = buildDefaultData("blank");
           startTransition(() => {
             setConnections(mergeConnections(blankWorkspace.connections, sharedConnections));
-            setJournalEntries(blankWorkspace.journalEntries);
-            setTimeCapsules(blankWorkspace.timeCapsules);
-            setCalendarEvents(blankWorkspace.calendarEvents);
-            setMessages(blankWorkspace.messages);
+            setJournalEntries(mergeById(blankWorkspace.journalEntries, sharedJournalEntries));
+            setTimeCapsules(mergeById(blankWorkspace.timeCapsules, sharedTimeCapsules));
+            setCalendarEvents(mergeById(blankWorkspace.calendarEvents, sharedCalendarEvents));
+            setMessages(mergeById(blankWorkspace.messages, sharedMessages));
             setCheckInPrompts(blankWorkspace.checkInPrompts);
             setVisitPlans(blankWorkspace.visitPlans);
             setItineraryItems(blankWorkspace.itineraryItems);
@@ -327,10 +366,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
     const payload: StoredAppData = {
       connections: withoutSharedConnections(connections),
-      journalEntries,
-      timeCapsules,
-      calendarEvents,
-      messages,
+      journalEntries: withoutRemoteSharedItems(journalEntries),
+      timeCapsules: withoutRemoteSharedItems(timeCapsules),
+      calendarEvents: withoutRemoteSharedItems(calendarEvents),
+      messages: withoutRemoteSharedItems(messages),
       checkInPrompts,
       visitPlans,
       itineraryItems,

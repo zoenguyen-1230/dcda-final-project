@@ -11,6 +11,7 @@ import { MultiSelectDropdown } from "../../components/ui/MultiSelectDropdown";
 import { ScreenSurface } from "../../components/ui/ScreenSurface";
 import { CalendarRangePicker } from "../../components/ui/CalendarRangePicker";
 import { SectionCard } from "../../components/ui/SectionCard";
+import { hasSupabaseCredentials } from "../../config/env";
 import {
   displayDateToInputValue,
   formatDateRange,
@@ -19,6 +20,16 @@ import {
   parseDateValue,
 } from "../../lib/dateHelpers";
 import { pickImageFromDevice } from "../../lib/pickImageFromDevice";
+import {
+  deleteSharedCalendarEvent,
+  deleteSharedJournalEntry,
+  deleteSharedTimeCapsule,
+  saveSharedCalendarEvent,
+  saveSharedJournalEntry,
+  saveSharedTimeCapsule,
+} from "../../lib/sharedContent";
+import { isSharedConnection } from "../../lib/sharedRelationships";
+import { useAuth } from "../../providers/AuthProvider";
 import { useAppData } from "../../providers/AppDataProvider";
 import { palette } from "../../theme/palette";
 import { typography } from "../../theme/typography";
@@ -52,6 +63,7 @@ function calendarEventToDateValue(event: CalendarEvent) {
 }
 
 export function SharedScreen() {
+  const { user } = useAuth();
   const {
     journalEntries,
     setJournalEntries,
@@ -88,6 +100,8 @@ export function SharedScreen() {
   const [openParticipantMenu, setOpenParticipantMenu] = useState<"entry" | "capsule" | "event" | null>(null);
 
   const entries = journalEntries;
+  const sharedParticipantSelection = (participantIds?: string[]) =>
+    (participantIds ?? []).filter((id) => isSharedConnection(id));
   const getParticipantNames = (participantIds?: string[]) =>
     connections
       .filter((connection) => (participantIds ?? []).includes(connection.id))
@@ -136,7 +150,7 @@ export function SharedScreen() {
     }
   };
 
-  const saveEntry = () => {
+  const saveEntry = async () => {
     const date = entryDraftDateValue.trim() ? inputValueToDisplayDate(entryDraftDateValue.trim()) : "";
     const title = entryDraftTitle.trim();
     const body = entryDraftBody.trim();
@@ -155,19 +169,51 @@ export function SharedScreen() {
       participantIds: entryDraftParticipantIds,
     };
 
-    if (existingEntry) {
-      setJournalEntries((current) =>
-        current.map((entry) => (entry.id === existingEntry.id ? nextEntry : entry))
-      );
+    const shouldSaveShared =
+      Boolean(user?.id && hasSupabaseCredentials && sharedParticipantSelection(nextEntry.participantIds).length);
+
+    if (shouldSaveShared && user?.id) {
+      try {
+        const savedEntry = await saveSharedJournalEntry({
+          userId: user.id,
+          entry: nextEntry,
+        });
+
+        if (savedEntry) {
+          if (existingEntry) {
+            setJournalEntries((current) =>
+              current.map((entry) => (entry.id === existingEntry.id ? savedEntry : entry))
+            );
+          } else {
+            setJournalEntries((current) => [savedEntry, ...current]);
+            setDraftPhotos((current) => ({ ...current, [savedEntry.id]: "" }));
+          }
+        }
+      } catch {
+        return;
+      }
     } else {
-      setJournalEntries((current) => [nextEntry, ...current]);
-      setDraftPhotos((current) => ({ ...current, [nextEntry.id]: "" }));
+      if (existingEntry) {
+        setJournalEntries((current) =>
+          current.map((entry) => (entry.id === existingEntry.id ? nextEntry : entry))
+        );
+      } else {
+        setJournalEntries((current) => [nextEntry, ...current]);
+        setDraftPhotos((current) => ({ ...current, [nextEntry.id]: "" }));
+      }
     }
 
     resetEntryDraft();
   };
 
-  const removeEntry = (entryId: string) => {
+  const removeEntry = async (entryId: string) => {
+    if (entryId.startsWith("remote-journal-")) {
+      try {
+        await deleteSharedJournalEntry(entryId);
+      } catch {
+        return;
+      }
+    }
     setJournalEntries((current) => current.filter((entry) => entry.id !== entryId));
     if (selectedEntryId === entryId) {
       resetEntryDraft();
@@ -200,7 +246,7 @@ export function SharedScreen() {
     }
   };
 
-  const saveCapsule = () => {
+  const saveCapsule = async () => {
     const title = capsuleDraftTitle.trim();
     const from = capsuleDraftFrom.trim();
     const body = capsuleDraftBody.trim();
@@ -224,18 +270,49 @@ export function SharedScreen() {
       participantIds: capsuleDraftParticipantIds,
     };
 
-    if (existingCapsule) {
-      setTimeCapsules((current) =>
-        current.map((capsule) => (capsule.id === existingCapsule.id ? nextCapsule : capsule))
-      );
+    const shouldSaveShared =
+      Boolean(user?.id && hasSupabaseCredentials && sharedParticipantSelection(nextCapsule.participantIds).length);
+
+    if (shouldSaveShared && user?.id) {
+      try {
+        const savedCapsule = await saveSharedTimeCapsule({
+          userId: user.id,
+          capsule: nextCapsule,
+        });
+
+        if (savedCapsule) {
+          if (existingCapsule) {
+            setTimeCapsules((current) =>
+              current.map((capsule) => (capsule.id === existingCapsule.id ? savedCapsule : capsule))
+            );
+          } else {
+            setTimeCapsules((current) => [savedCapsule, ...current]);
+          }
+        }
+      } catch {
+        return;
+      }
     } else {
-      setTimeCapsules((current) => [nextCapsule, ...current]);
+      if (existingCapsule) {
+        setTimeCapsules((current) =>
+          current.map((capsule) => (capsule.id === existingCapsule.id ? nextCapsule : capsule))
+        );
+      } else {
+        setTimeCapsules((current) => [nextCapsule, ...current]);
+      }
     }
 
     resetCapsuleDraft();
   };
 
-  const removeCapsule = (capsuleId: string) => {
+  const removeCapsule = async (capsuleId: string) => {
+    if (capsuleId.startsWith("remote-capsule-")) {
+      try {
+        await deleteSharedTimeCapsule(capsuleId);
+      } catch {
+        return;
+      }
+    }
     setTimeCapsules((current) => current.filter((capsule) => capsule.id !== capsuleId));
     if (selectedCapsuleId === capsuleId) {
       resetCapsuleDraft();
@@ -263,7 +340,7 @@ export function SharedScreen() {
     }
   };
 
-  const saveEvent = () => {
+  const saveEvent = async () => {
     const dateValue = eventDraftDateValue.trim();
     const title = eventDraftTitle.trim();
     const detail = eventDraftDetail.trim();
@@ -291,18 +368,49 @@ export function SharedScreen() {
       participantIds: eventDraftParticipantIds,
     };
 
-    if (existingEvent) {
-      setCalendarEvents((current) =>
-        current.map((event) => (event.id === existingEvent.id ? nextEvent : event))
-      );
+    const shouldSaveShared =
+      Boolean(user?.id && hasSupabaseCredentials && sharedParticipantSelection(nextEvent.participantIds).length);
+
+    if (shouldSaveShared && user?.id) {
+      try {
+        const savedEvent = await saveSharedCalendarEvent({
+          userId: user.id,
+          event: nextEvent,
+        });
+
+        if (savedEvent) {
+          if (existingEvent) {
+            setCalendarEvents((current) =>
+              current.map((event) => (event.id === existingEvent.id ? savedEvent : event))
+            );
+          } else {
+            setCalendarEvents((current) => [savedEvent, ...current]);
+          }
+        }
+      } catch {
+        return;
+      }
     } else {
-      setCalendarEvents((current) => [nextEvent, ...current]);
+      if (existingEvent) {
+        setCalendarEvents((current) =>
+          current.map((event) => (event.id === existingEvent.id ? nextEvent : event))
+        );
+      } else {
+        setCalendarEvents((current) => [nextEvent, ...current]);
+      }
     }
 
     resetEventDraft();
   };
 
-  const removeEvent = (eventId: string) => {
+  const removeEvent = async (eventId: string) => {
+    if (eventId.startsWith("remote-event-")) {
+      try {
+        await deleteSharedCalendarEvent(eventId);
+      } catch {
+        return;
+      }
+    }
     setCalendarEvents((current) => current.filter((event) => event.id !== eventId));
     if (selectedEventId === eventId) {
       resetEventDraft();

@@ -11,7 +11,11 @@ import {
 import { FilterChip } from "../../components/ui/FilterChip";
 import { ScreenSurface } from "../../components/ui/ScreenSurface";
 import { SectionCard } from "../../components/ui/SectionCard";
+import { hasSupabaseCredentials } from "../../config/env";
 import { pickImageFromDevice } from "../../lib/pickImageFromDevice";
+import { saveSharedMessage } from "../../lib/sharedContent";
+import { isSharedConnection } from "../../lib/sharedRelationships";
+import { useAuth } from "../../providers/AuthProvider";
 import { useAppData } from "../../providers/AppDataProvider";
 import { useProfile } from "../../providers/ProfileProvider";
 import { palette } from "../../theme/palette";
@@ -68,6 +72,7 @@ async function blobToDataUrl(blob: Blob): Promise<string> {
 }
 
 export function ChatScreen() {
+  const { user } = useAuth();
   const { connections, messages, setMessages } = useAppData();
   const { profile } = useProfile();
   const { width } = useWindowDimensions();
@@ -122,7 +127,7 @@ export function ChatScreen() {
     []
   );
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     const body = draftMessage.trim();
     const requiresMedia = draftType === "Photo" || draftType === "Voice memo" || draftType === "Video message";
 
@@ -134,19 +139,40 @@ export function ChatScreen() {
       return;
     }
 
-    setMessages((current) => [
-      ...current,
-      {
-        id: `msg-${Date.now()}`,
-        connectionId: selectedConnectionId,
-        author: "self",
-        type: draftType,
-        body,
-        sentAt: buildTimeStamp(),
-        mediaUri: draftMediaUri,
-        reactions: [],
-      },
-    ]);
+    const shouldSaveShared =
+      Boolean(user?.id && hasSupabaseCredentials && isSharedConnection(selectedConnectionId));
+
+    if (shouldSaveShared && user?.id) {
+      try {
+        const sharedMessage = await saveSharedMessage({
+          userId: user.id,
+          connectionId: selectedConnectionId,
+          type: draftType,
+          body,
+          mediaUri: draftMediaUri,
+        });
+
+        if (sharedMessage) {
+          setMessages((current) => [...current, sharedMessage]);
+        }
+      } catch {
+        return;
+      }
+    } else {
+      setMessages((current) => [
+        ...current,
+        {
+          id: `msg-${Date.now()}`,
+          connectionId: selectedConnectionId,
+          author: "self",
+          type: draftType,
+          body,
+          sentAt: buildTimeStamp(),
+          mediaUri: draftMediaUri,
+          reactions: [],
+        },
+      ]);
+    }
     setDraftMessage("");
     setDraftMediaUri(undefined);
     setDraftType("Text");
@@ -496,7 +522,7 @@ export function ChatScreen() {
                   />
                   <TouchableOpacity
                     style={[styles.primaryButton, isWideLayout && styles.primaryButtonCompact]}
-                    onPress={sendMessage}
+                    onPress={() => void sendMessage()}
                   >
                     <Text style={styles.primaryButtonText}>
                       Send to {selectedConnection?.name || "your person"}

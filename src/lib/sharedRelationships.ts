@@ -1,8 +1,23 @@
 import { supabase } from "./supabase";
 import { Connection, RelationshipInvite, RelationshipType } from "../types";
 
-function buildSharedConnectionId(relationshipId: string, profileId: string) {
+export function buildSharedConnectionId(relationshipId: string, profileId: string) {
   return `shared-${relationshipId}-${profileId}`;
+}
+
+export function parseSharedConnectionId(connectionId: string) {
+  if (!connectionId.startsWith("shared-")) {
+    return null;
+  }
+
+  const [, relationshipId, ...profileIdParts] = connectionId.split("-");
+  const profileId = profileIdParts.join("-");
+
+  if (!relationshipId || !profileId) {
+    return null;
+  }
+
+  return { relationshipId, profileId };
 }
 
 function accentForRelationship(relationshipType: RelationshipType) {

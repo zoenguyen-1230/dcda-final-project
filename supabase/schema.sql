@@ -297,10 +297,16 @@ drop policy if exists "Members can read moods" on public.mood_updates;
 drop policy if exists "Authors can insert moods" on public.mood_updates;
 drop policy if exists "Members can read journal entries" on public.journal_entries;
 drop policy if exists "Authors can insert journal entries" on public.journal_entries;
+drop policy if exists "Authors can update journal entries" on public.journal_entries;
+drop policy if exists "Authors can delete journal entries" on public.journal_entries;
 drop policy if exists "Members can read time capsules" on public.time_capsules;
 drop policy if exists "Authors can insert time capsules" on public.time_capsules;
+drop policy if exists "Authors can update time capsules" on public.time_capsules;
+drop policy if exists "Authors can delete time capsules" on public.time_capsules;
 drop policy if exists "Members can read calendar events" on public.calendar_events;
 drop policy if exists "Members can insert calendar events" on public.calendar_events;
+drop policy if exists "Authors can update calendar events" on public.calendar_events;
+drop policy if exists "Authors can delete calendar events" on public.calendar_events;
 drop policy if exists "Members can read visit plans" on public.visit_plans;
 drop policy if exists "Members can insert visit plans" on public.visit_plans;
 drop policy if exists "Members can read date ideas" on public.date_ideas;
@@ -535,6 +541,17 @@ create policy "Authors can insert journal entries"
     )
   );
 
+create policy "Authors can update journal entries"
+  on public.journal_entries
+  for update
+  using (author_id = auth.uid())
+  with check (author_id = auth.uid());
+
+create policy "Authors can delete journal entries"
+  on public.journal_entries
+  for delete
+  using (author_id = auth.uid());
+
 create policy "Members can read time capsules"
   on public.time_capsules
   for select
@@ -560,6 +577,17 @@ create policy "Authors can insert time capsules"
     )
   );
 
+create policy "Authors can update time capsules"
+  on public.time_capsules
+  for update
+  using (author_id = auth.uid())
+  with check (author_id = auth.uid());
+
+create policy "Authors can delete time capsules"
+  on public.time_capsules
+  for delete
+  using (author_id = auth.uid());
+
 create policy "Members can read calendar events"
   on public.calendar_events
   for select
@@ -584,6 +612,17 @@ create policy "Members can insert calendar events"
         and rm.profile_id = auth.uid()
     )
   );
+
+create policy "Authors can update calendar events"
+  on public.calendar_events
+  for update
+  using (created_by = auth.uid())
+  with check (created_by = auth.uid());
+
+create policy "Authors can delete calendar events"
+  on public.calendar_events
+  for delete
+  using (created_by = auth.uid());
 
 create policy "Members can read visit plans"
   on public.visit_plans
