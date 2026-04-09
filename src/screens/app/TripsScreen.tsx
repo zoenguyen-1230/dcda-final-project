@@ -21,6 +21,7 @@ import { isSharedConnection } from "../../lib/sharedRelationships";
 import { deleteSharedVisitPlan, saveSharedVisitPlan } from "../../lib/sharedTrips";
 import { useAppData } from "../../providers/AppDataProvider";
 import { useAuth } from "../../providers/AuthProvider";
+import { useProfile } from "../../providers/ProfileProvider";
 import { BudgetItem, FlightLeg, VisitPlan } from "../../types";
 import { palette } from "../../theme/palette";
 import { typography } from "../../theme/typography";
@@ -34,8 +35,6 @@ const budgetCategories = [
   "Gifts",
   "Other",
 ];
-
-const budgetPayers = ["You", "Sean", "Split"];
 
 const monthNames = getMonthNames();
 
@@ -129,6 +128,7 @@ function buildFallbackForecast(city: string) {
 
 export function TripsScreen() {
   const { user } = useAuth();
+  const { profile } = useProfile();
   const {
     connections,
     visitPlans,
@@ -172,6 +172,7 @@ export function TripsScreen() {
   const initialSelectedTrip = initialTrips[0];
   const [selectedTripId, setSelectedTripId] = useState(initialTrips[0]?.id ?? "");
   const [isCreatingTrip, setIsCreatingTrip] = useState(!initialSelectedTrip);
+  const [tripEditorVisible, setTripEditorVisible] = useState(true);
   const [tripDraftTitle, setTripDraftTitle] = useState(initialTrips[0]?.title ?? "");
   const [tripDraftLocation, setTripDraftLocation] = useState(initialTrips[0]?.location ?? "");
   const [tripDraftStartDate, setTripDraftStartDate] = useState(
@@ -331,6 +332,23 @@ export function TripsScreen() {
     () => budgetSuggestions.filter((item) => item.trip === selectedBudgetTrip),
     [selectedBudgetTrip]
   );
+  const selectedBudgetPlan = useMemo(
+    () => orderedActiveTrips.find((trip) => trip.location === selectedBudgetTrip) ?? null,
+    [orderedActiveTrips, selectedBudgetTrip]
+  );
+  const budgetPayerOptions = useMemo(() => {
+    const participantNames = selectedBudgetPlan
+      ? getParticipantNames(selectedBudgetPlan.participantIds)
+      : [];
+
+    return Array.from(
+      new Set([
+        profile.displayName?.trim() || "You",
+        ...participantNames,
+        "Split",
+      ].filter(Boolean))
+    );
+  }, [profile.displayName, selectedBudgetPlan]);
 
   const visibleWeatherForecasts = useMemo(
     () =>
@@ -761,6 +779,7 @@ export function TripsScreen() {
 
     setIsCreatingTrip(false);
     setSelectedTripId(tripId);
+    setTripEditorVisible(true);
     setTripDraftTitle(trip.title);
     setTripDraftLocation(trip.location);
     setTripDraftStartDate(trip.startDate);
@@ -886,6 +905,7 @@ export function TripsScreen() {
       setSelectedTrackedFlightTrip(savedTrip.location);
       setSelectedBudgetTrip(savedTrip.location);
       setOpenTripParticipantMenu(false);
+      setTripEditorVisible(false);
       return;
     }
 
@@ -955,10 +975,12 @@ export function TripsScreen() {
     }
 
     setOpenTripParticipantMenu(false);
+    setTripEditorVisible(false);
   };
 
   const startNewTrip = () => {
     setIsCreatingTrip(true);
+    setTripEditorVisible(true);
     setSelectedTripId("");
     setTripDraftTitle("");
     setTripDraftLocation("");
@@ -1011,6 +1033,7 @@ export function TripsScreen() {
       current.map((trip) => (trip.id === tripId ? { ...trip, archived: false } : trip))
     );
     setIsCreatingTrip(false);
+    setTripEditorVisible(true);
     loadTripIntoEditor(tripId);
   };
 
@@ -1254,103 +1277,120 @@ export function TripsScreen() {
           </View>
         </View>
 
-        <View style={styles.editorCard}>
-          <Text style={styles.subsectionTitle}>
-            {isEditingExistingTrip ? "Edit selected trip" : "Add a new trip"}
-          </Text>
-          <View style={styles.inputStack}>
-            <Text style={styles.fieldLabel}>
-              Trip name <Text style={styles.requiredMark}>*</Text>
+        {tripEditorVisible ? (
+          <View style={styles.editorCard}>
+            <Text style={styles.subsectionTitle}>
+              {isEditingExistingTrip ? "Edit selected trip" : "Add a new trip"}
             </Text>
-            <TextInput value={tripDraftTitle} onChangeText={setTripDraftTitle} placeholder="Trip name" placeholderTextColor="#A08F89" style={styles.textInput} />
-            <Text style={styles.fieldLabel}>
-              Location <Text style={styles.requiredMark}>*</Text>
-            </Text>
-            <TextInput value={tripDraftLocation} onChangeText={setTripDraftLocation} placeholder="Location, ex: Austin, TX" placeholderTextColor="#A08F89" style={styles.textInput} />
-            {tripLocationSuggestions.length ? (
-              <View style={styles.suggestionList}>
-                {tripLocationSuggestions.map((location) => (
-                  <TouchableOpacity
-                    key={location.label}
-                    style={styles.suggestionRow}
-                    onPress={() => applyTripLocationSuggestion(location.label)}
-                  >
-                    <Text style={styles.suggestionTitle}>{location.label}</Text>
-                    <Text style={styles.suggestionMeta}>{location.timezone}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            ) : null}
-            {tripLocationMatch ? (
-              <Text style={styles.helperMeta}>
-                Suggested timezone: {tripLocationMatch.timezone}
+            <View style={styles.inputStack}>
+              <Text style={styles.fieldLabel}>
+                Trip name <Text style={styles.requiredMark}>*</Text>
               </Text>
-            ) : null}
-            <Text style={styles.fieldLabel}>
-              Trip dates <Text style={styles.requiredMark}>*</Text>
-            </Text>
-            <CalendarRangePicker
-              title="Trip dates"
-              summary={tripDraftDateSummary}
-              monthDate={calendarMonth}
-              startDate={tripDraftStartDate}
-              endDate={tripDraftEndDate}
-              isOpen={openCalendarPicker === "trip"}
-              onToggle={() =>
-                setOpenCalendarPicker((current) => (current === "trip" ? null : "trip"))
-              }
-              onShiftMonth={shiftCalendarMonth}
-              onSelectDate={selectTripDate}
-              onClear={() => {
-                setTripDraftStartDate("");
-                setTripDraftEndDate("");
-              }}
-              helperText="Tap once for a single-day trip. Tap a second later date to turn it into a multi-day trip."
-            />
-            <Text style={styles.fieldLabel}>
-              Description or checklist <Text style={styles.requiredMark}>*</Text>
-            </Text>
-            <TextInput value={tripDraftPlan} onChangeText={setTripDraftPlan} placeholder="Description or shared checklist" placeholderTextColor="#A08F89" style={[styles.textInput, styles.detailInput]} multiline />
-            <MultiSelectDropdown
-              label="Who is this trip with?"
-              selectedLabels={getParticipantNames(tripDraftParticipantIds)}
-              options={liveConnections.map((connection) => ({
-                id: connection.id,
-                label: connection.name,
-              }))}
-              isOpen={openTripParticipantMenu}
-              onToggleOpen={() => setOpenTripParticipantMenu((current) => !current)}
-              onToggleOption={toggleTripParticipant}
-              emptyHelper="Add people in `People` first, then link this trip to whoever is joining you."
-            />
-          </View>
-          <View style={styles.rowMeta}>
-            <Text style={styles.helperMeta}>
-              Countdown preview: {tripDraftStartDate ? `${getDaysAway(tripDraftStartDate)} days away` : "add a date"}
-            </Text>
-            <TouchableOpacity style={styles.primaryButton} onPress={saveTrip}>
-              <Text style={styles.primaryButtonText}>
-                {isEditingExistingTrip ? "Save trip" : "Add trip"}
+              <TextInput value={tripDraftTitle} onChangeText={setTripDraftTitle} placeholder="Trip name" placeholderTextColor="#A08F89" style={styles.textInput} />
+              <Text style={styles.fieldLabel}>
+                Location <Text style={styles.requiredMark}>*</Text>
               </Text>
-            </TouchableOpacity>
-          </View>
-          {isEditingExistingTrip ? (
-            <View style={styles.rowMeta}>
-              {isSharedTrip ? (
+              <TextInput value={tripDraftLocation} onChangeText={setTripDraftLocation} placeholder="Location, ex: Austin, TX" placeholderTextColor="#A08F89" style={styles.textInput} />
+              {tripLocationSuggestions.length ? (
+                <View style={styles.suggestionList}>
+                  {tripLocationSuggestions.map((location) => (
+                    <TouchableOpacity
+                      key={location.label}
+                      style={styles.suggestionRow}
+                      onPress={() => applyTripLocationSuggestion(location.label)}
+                    >
+                      <Text style={styles.suggestionTitle}>{location.label}</Text>
+                      <Text style={styles.suggestionMeta}>{location.timezone}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : null}
+              {tripLocationMatch ? (
                 <Text style={styles.helperMeta}>
-                  Shared trips stay active for both people.
+                  Suggested timezone: {tripLocationMatch.timezone}
                 </Text>
-              ) : (
-                <TouchableOpacity style={styles.secondaryAction} onPress={archiveTrip}>
-                  <Text style={styles.secondaryActionText}>Archive trip</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity style={styles.removeButton} onPress={deleteTrip}>
-                <Text style={styles.removeButtonText}>Delete trip</Text>
+              ) : null}
+              <Text style={styles.fieldLabel}>
+                Trip dates <Text style={styles.requiredMark}>*</Text>
+              </Text>
+              <CalendarRangePicker
+                title="Trip dates"
+                summary={tripDraftDateSummary}
+                monthDate={calendarMonth}
+                startDate={tripDraftStartDate}
+                endDate={tripDraftEndDate}
+                isOpen={openCalendarPicker === "trip"}
+                onToggle={() =>
+                  setOpenCalendarPicker((current) => (current === "trip" ? null : "trip"))
+                }
+                onShiftMonth={shiftCalendarMonth}
+                onSelectDate={selectTripDate}
+                onClear={() => {
+                  setTripDraftStartDate("");
+                  setTripDraftEndDate("");
+                }}
+                helperText="Tap once for a single-day trip. Tap a second later date to turn it into a multi-day trip."
+              />
+              <Text style={styles.fieldLabel}>
+                Description or checklist <Text style={styles.requiredMark}>*</Text>
+              </Text>
+              <TextInput value={tripDraftPlan} onChangeText={setTripDraftPlan} placeholder="Description or shared checklist" placeholderTextColor="#A08F89" style={[styles.textInput, styles.detailInput]} multiline />
+              <MultiSelectDropdown
+                label="Who is this trip with?"
+                selectedLabels={getParticipantNames(tripDraftParticipantIds)}
+                options={liveConnections.map((connection) => ({
+                  id: connection.id,
+                  label: connection.name,
+                }))}
+                isOpen={openTripParticipantMenu}
+                onToggleOpen={() => setOpenTripParticipantMenu((current) => !current)}
+                onToggleOption={toggleTripParticipant}
+                emptyHelper="Add people in `People` first, then link this trip to whoever is joining you."
+              />
+            </View>
+            <View style={styles.rowMeta}>
+              <Text style={styles.helperMeta}>
+                Countdown preview: {tripDraftStartDate ? `${getDaysAway(tripDraftStartDate)} days away` : "add a date"}
+              </Text>
+              <TouchableOpacity style={styles.primaryButton} onPress={saveTrip}>
+                <Text style={styles.primaryButtonText}>
+                  {isEditingExistingTrip ? "Save trip" : "Add trip"}
+                </Text>
               </TouchableOpacity>
             </View>
-          ) : null}
-        </View>
+            {isEditingExistingTrip ? (
+              <View style={styles.rowMeta}>
+                {isSharedTrip ? (
+                  <Text style={styles.helperMeta}>
+                    Shared trips stay active for both people.
+                  </Text>
+                ) : (
+                  <TouchableOpacity style={styles.secondaryAction} onPress={archiveTrip}>
+                    <Text style={styles.secondaryActionText}>Archive trip</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={styles.removeButton} onPress={deleteTrip}>
+                  <Text style={styles.removeButtonText}>Delete trip</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+          </View>
+        ) : (
+          <View style={styles.closedSummaryCard}>
+            <Text style={styles.feedTitle}>
+              {isEditingExistingTrip ? "Trip saved" : "Trip added"}
+            </Text>
+            <Text style={styles.feedMeta}>
+              {tripDraftTitle || "Your trip"} • {tripDraftDateSummary}
+            </Text>
+            <TouchableOpacity
+              style={styles.secondaryAction}
+              onPress={() => setTripEditorVisible(true)}
+            >
+              <Text style={styles.secondaryActionText}>Reopen editor</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </SectionCard>
 
       <SectionCard
@@ -2015,7 +2055,7 @@ export function TripsScreen() {
                         </TouchableOpacity>
                         {openBudgetPayerMenu === "new" ? (
                           <View style={styles.optionList}>
-                            {budgetPayers.map((payer) => (
+                            {budgetPayerOptions.map((payer) => (
                               <TouchableOpacity key={payer} style={styles.optionRow} onPress={() => { setDraftBudgetPayer(payer); setOpenBudgetPayerMenu(null); }}>
                                 <Text style={styles.optionText}>{payer}</Text>
                               </TouchableOpacity>
@@ -2060,7 +2100,7 @@ export function TripsScreen() {
                             </TouchableOpacity>
                             {openBudgetPayerMenu === item.id ? (
                               <View style={styles.optionList}>
-                                {budgetPayers.map((payer) => (
+                                {budgetPayerOptions.map((payer) => (
                                   <TouchableOpacity key={`${item.id}-${payer}`} style={styles.optionRow} onPress={() => { updateBudgetItem(item.id, "payer", payer); setOpenBudgetPayerMenu(null); }}>
                                     <Text style={styles.optionText}>{payer}</Text>
                                   </TouchableOpacity>
