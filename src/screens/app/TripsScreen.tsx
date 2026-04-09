@@ -126,6 +126,15 @@ function buildFallbackForecast(city: string) {
   };
 }
 
+function getParticipantNamesFromConnections(
+  connections: Array<{ id: string; name: string }>,
+  participantIds: string[]
+) {
+  return connections
+    .filter((connection) => participantIds.includes(connection.id))
+    .map((connection) => connection.name);
+}
+
 export function TripsScreen() {
   const { user } = useAuth();
   const { profile } = useProfile();
@@ -338,7 +347,7 @@ export function TripsScreen() {
   );
   const budgetPayerOptions = useMemo(() => {
     const participantNames = selectedBudgetPlan
-      ? getParticipantNames(selectedBudgetPlan.participantIds)
+      ? getParticipantNamesFromConnections(liveConnections, selectedBudgetPlan.participantIds)
       : [];
 
     return Array.from(
@@ -1114,9 +1123,7 @@ export function TripsScreen() {
   };
 
   const getParticipantNames = (participantIds: string[]) =>
-    liveConnections
-      .filter((connection) => participantIds.includes(connection.id))
-      .map((connection) => connection.name);
+    getParticipantNamesFromConnections(liveConnections, participantIds);
 
   const applyTripLocationSuggestion = (locationLabel: string) => {
     setTripDraftLocation(locationLabel);
