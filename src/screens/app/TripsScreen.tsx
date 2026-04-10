@@ -886,18 +886,6 @@ export function TripsScreen() {
     });
   };
 
-  const toggleItinerary = (id: string) => {
-    const nextCompletedItinerary = completedItinerary.includes(id)
-      ? completedItinerary.filter((item) => item !== id)
-      : [...completedItinerary, id];
-
-    setCompletedItinerary(nextCompletedItinerary);
-    void persistSharedTripToolkit({
-      tripTitle: selectedVisitTitle,
-      completedItinerary: nextCompletedItinerary,
-    });
-  };
-
   const addItineraryItem = () => {
     const title = draftTitle.trim();
     const detail = draftDetail.trim();
@@ -2082,8 +2070,8 @@ export function TripsScreen() {
                 {visibleItinerary.length ? (
                   <View style={styles.itineraryList}>
                     {visibleItinerary.map((item) => (
-                      <TouchableOpacity key={item.id} style={styles.toolCard} onPress={() => toggleItinerary(item.id)} activeOpacity={0.9}>
-                        <View style={[styles.toolBadge, completedItinerary.includes(item.id) && styles.toolBadgeComplete]}>
+                      <View key={item.id} style={styles.toolCard}>
+                        <View style={styles.toolBadge}>
                           <Text style={styles.toolBadgeLabel}>{item.time}</Text>
                         </View>
                         <View style={styles.toolCopy}>
@@ -2094,15 +2082,12 @@ export function TripsScreen() {
                               .join(" • ") || "No extra notes yet."}
                           </Text>
                           <View style={styles.rowMeta}>
-                            <Text style={styles.helperMeta}>
-                              {completedItinerary.includes(item.id) ? "Marked as planned together" : "Tap to mark this part of the trip as planned"}
-                            </Text>
                             <TouchableOpacity onPress={() => removeItineraryItem(item.id)}>
                               <Text style={styles.removeText}>Remove</Text>
                             </TouchableOpacity>
                           </View>
                         </View>
-                      </TouchableOpacity>
+                      </View>
                     ))}
                   </View>
                 ) : (
@@ -3024,10 +3009,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 10,
     paddingVertical: 10,
-  },
-  toolBadgeComplete: {
-    backgroundColor: palette.mint,
-    borderColor: "#CDEBDD",
   },
   toolBadgeLabel: {
     color: palette.berry,
