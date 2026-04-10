@@ -288,6 +288,41 @@ begin
 end;
 $$;
 
+drop function if exists public.user_can_access_relationship(uuid);
+create or replace function public.user_can_access_relationship(target_relationship_id uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1
+    from public.relationship_members rm
+    where rm.relationship_id = target_relationship_id
+      and rm.profile_id = auth.uid()
+  );
+$$;
+
+drop function if exists public.user_shares_relationship_with_profile(uuid);
+create or replace function public.user_shares_relationship_with_profile(target_profile_id uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select auth.uid() = target_profile_id
+    or exists (
+      select 1
+      from public.relationship_members mine
+      join public.relationship_members theirs
+        on mine.relationship_id = theirs.relationship_id
+      where mine.profile_id = auth.uid()
+        and theirs.profile_id = target_profile_id
+    );
+$$;
+
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
@@ -362,14 +397,7 @@ create policy "Users can read profiles in shared relationships"
   for select
   using (
     auth.uid() = id
-    or exists (
-      select 1
-      from public.relationship_members mine
-      join public.relationship_members theirs
-        on mine.relationship_id = theirs.relationship_id
-      where mine.profile_id = auth.uid()
-        and theirs.profile_id = profiles.id
-    )
+    or public.user_shares_relationship_with_profile(profiles.id)
   );
 
 create policy "Users can update their own profile"
@@ -391,14 +419,7 @@ create policy "Users can manage their own social links"
 create policy "Members can read relationships"
   on public.relationships
   for select
-  using (
-    exists (
-      select 1
-      from public.relationship_members rm
-      where rm.relationship_id = relationships.id
-        and rm.profile_id = auth.uid()
-    )
-  );
+  using (public.user_can_access_relationship(relationships.id));
 
 create policy "Creators can insert relationships"
   on public.relationships
@@ -410,12 +431,7 @@ create policy "Members can read membership rows"
   for select
   using (
     profile_id = auth.uid()
-    or exists (
-      select 1
-      from public.relationship_members rm
-      where rm.relationship_id = relationship_members.relationship_id
-        and rm.profile_id = auth.uid()
-    )
+    or public.user_can_access_relationship(relationship_members.relationship_id)
   );
 
 create policy "Members can insert membership rows"
@@ -433,26 +449,12 @@ create policy "Members can insert membership rows"
 create policy "Members can read conversations"
   on public.conversations
   for select
-  using (
-    exists (
-      select 1
-      from public.relationship_members rm
-      where rm.relationship_id = conversations.relationship_id
-        and rm.profile_id = auth.uid()
-    )
-  );
+  using (public.user_can_access_relationship(conversations.relationship_id));
 
 create policy "Members can create conversations"
   on public.conversations
   for insert
-  with check (
-    exists (
-      select 1
-      from public.relationship_members rm
-      where rm.relationship_id = conversations.relationship_id
-        and rm.profile_id = auth.uid()
-    )
-  );
+  with check (public.user_can_access_relationship(conversations.relationship_id));
 
 create policy "Members can read messages"
   on public.messages
@@ -461,9 +463,8 @@ create policy "Members can read messages"
     exists (
       select 1
       from public.conversations c
-      join public.relationship_members rm on rm.relationship_id = c.relationship_id
       where c.id = messages.conversation_id
-        and rm.profile_id = auth.uid()
+        and public.user_can_access_relationship(c.relationship_id)
     )
   );
 
@@ -475,35 +476,22 @@ create policy "Members can send messages"
     and exists (
       select 1
       from public.conversations c
-      join public.relationship_members rm on rm.relationship_id = c.relationship_id
       where c.id = messages.conversation_id
-        and rm.profile_id = auth.uid()
+        and public.user_can_access_relationship(c.relationship_id)
     )
   );
 
 create policy "Members can read prompts"
   on public.checkin_prompts
   for select
-  using (
-    exists (
-      select 1
-      from public.relationship_members rm
-      where rm.relationship_id = checkin_prompts.relationship_id
-        and rm.profile_id = auth.uid()
-    )
-  );
+  using (public.user_can_access_relationship(checkin_prompts.relationship_id));
 
 create policy "Members can insert prompts"
   on public.checkin_prompts
   for insert
   with check (
     created_by = auth.uid()
-    and exists (
-      select 1
-      from public.relationship_members rm
-      where rm.relationship_id = checkin_prompts.relationship_id
-        and rm.profile_id = auth.uid()
-    )
+    and public.user_can_access_relationship(checkin_prompts.relationship_id)
   );
 
 create policy "Members can read prompt responses"
@@ -513,9 +501,8 @@ create policy "Members can read prompt responses"
     exists (
       select 1
       from public.checkin_prompts p
-      join public.relationship_members rm on rm.relationship_id = p.relationship_id
       where p.id = checkin_responses.prompt_id
-        and rm.profile_id = auth.uid()
+        and public.user_can_access_relationship(p.relationship_id)
     )
   );
 
@@ -527,51 +514,27 @@ create policy "Authors can insert prompt responses"
 create policy "Members can read moods"
   on public.mood_updates
   for select
-  using (
-    exists (
-      select 1
-      from public.relationship_members rm
-      where rm.relationship_id = mood_updates.relationship_id
-        and rm.profile_id = auth.uid()
-    )
-  );
+  using (public.user_can_access_relationship(mood_updates.relationship_id));
 
 create policy "Authors can insert moods"
   on public.mood_updates
   for insert
   with check (
     author_id = auth.uid()
-    and exists (
-      select 1
-      from public.relationship_members rm
-      where rm.relationship_id = mood_updates.relationship_id
-        and rm.profile_id = auth.uid()
-    )
+    and public.user_can_access_relationship(mood_updates.relationship_id)
   );
 
 create policy "Members can read journal entries"
   on public.journal_entries
   for select
-  using (
-    exists (
-      select 1
-      from public.relationship_members rm
-      where rm.relationship_id = journal_entries.relationship_id
-        and rm.profile_id = auth.uid()
-    )
-  );
+  using (public.user_can_access_relationship(journal_entries.relationship_id));
 
 create policy "Authors can insert journal entries"
   on public.journal_entries
   for insert
   with check (
     author_id = auth.uid()
-    and exists (
-      select 1
-      from public.relationship_members rm
-      where rm.relationship_id = journal_entries.relationship_id
-        and rm.profile_id = auth.uid()
-    )
+    and public.user_can_access_relationship(journal_entries.relationship_id)
   );
 
 create policy "Authors can update journal entries"
@@ -588,26 +551,14 @@ create policy "Authors can delete journal entries"
 create policy "Members can read time capsules"
   on public.time_capsules
   for select
-  using (
-    exists (
-      select 1
-      from public.relationship_members rm
-      where rm.relationship_id = time_capsules.relationship_id
-        and rm.profile_id = auth.uid()
-    )
-  );
+  using (public.user_can_access_relationship(time_capsules.relationship_id));
 
 create policy "Authors can insert time capsules"
   on public.time_capsules
   for insert
   with check (
     author_id = auth.uid()
-    and exists (
-      select 1
-      from public.relationship_members rm
-      where rm.relationship_id = time_capsules.relationship_id
-        and rm.profile_id = auth.uid()
-    )
+    and public.user_can_access_relationship(time_capsules.relationship_id)
   );
 
 create policy "Authors can update time capsules"
@@ -624,26 +575,14 @@ create policy "Authors can delete time capsules"
 create policy "Members can read calendar events"
   on public.calendar_events
   for select
-  using (
-    exists (
-      select 1
-      from public.relationship_members rm
-      where rm.relationship_id = calendar_events.relationship_id
-        and rm.profile_id = auth.uid()
-    )
-  );
+  using (public.user_can_access_relationship(calendar_events.relationship_id));
 
 create policy "Members can insert calendar events"
   on public.calendar_events
   for insert
   with check (
     created_by = auth.uid()
-    and exists (
-      select 1
-      from public.relationship_members rm
-      where rm.relationship_id = calendar_events.relationship_id
-        and rm.profile_id = auth.uid()
-    )
+    and public.user_can_access_relationship(calendar_events.relationship_id)
   );
 
 create policy "Authors can update calendar events"
@@ -660,38 +599,19 @@ create policy "Authors can delete calendar events"
 create policy "Members can read visit plans"
   on public.visit_plans
   for select
-  using (
-    exists (
-      select 1
-      from public.relationship_members rm
-      where rm.relationship_id = visit_plans.relationship_id
-        and rm.profile_id = auth.uid()
-    )
-  );
+  using (public.user_can_access_relationship(visit_plans.relationship_id));
 
 create policy "Members can insert visit plans"
   on public.visit_plans
   for insert
-  with check (
-    exists (
-      select 1
-      from public.relationship_members rm
-      where rm.relationship_id = visit_plans.relationship_id
-        and rm.profile_id = auth.uid()
-    )
-  );
+  with check (public.user_can_access_relationship(visit_plans.relationship_id));
 
 create policy "Members can read date ideas"
   on public.date_ideas
   for select
   using (
     relationship_id is null
-    or exists (
-      select 1
-      from public.relationship_members rm
-      where rm.relationship_id = date_ideas.relationship_id
-        and rm.profile_id = auth.uid()
-    )
+    or public.user_can_access_relationship(date_ideas.relationship_id)
   );
 
 create policy "Members can insert date ideas"
@@ -701,12 +621,7 @@ create policy "Members can insert date ideas"
     created_by = auth.uid()
     and (
       relationship_id is null
-      or exists (
-        select 1
-        from public.relationship_members rm
-        where rm.relationship_id = date_ideas.relationship_id
-          and rm.profile_id = auth.uid()
-      )
+      or public.user_can_access_relationship(date_ideas.relationship_id)
     )
   );
 
