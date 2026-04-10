@@ -1,5 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { CalendarRangePicker } from "../../components/ui/CalendarRangePicker";
 import { FilterChip } from "../../components/ui/FilterChip";
 import { MultiSelectDropdown } from "../../components/ui/MultiSelectDropdown";
@@ -146,6 +154,7 @@ function getParticipantNamesFromConnections(
 export function TripsScreen() {
   const { user } = useAuth();
   const { profile } = useProfile();
+  const { width } = useWindowDimensions();
   const {
     connections,
     visitPlans,
@@ -275,6 +284,7 @@ export function TripsScreen() {
   const [openTripParticipantMenu, setOpenTripParticipantMenu] = useState(false);
 
   const isEditingExistingTrip = !isCreatingTrip && selectedTripId !== "";
+  const isWideLayout = width >= 1080;
 
   const registerToolkitSection = (section: ToolkitSectionKey, y: number) => {
     toolkitSectionOffsets.current[section] = y;
@@ -2065,78 +2075,118 @@ export function TripsScreen() {
                 </View>
               </View>
 
-              <View style={styles.totalCard}>
-                <Text style={styles.totalLabel}>Current shared total</Text>
-                <Text style={styles.totalValue}>${budgetTotal.toFixed(2)}</Text>
-              </View>
+              <View style={[styles.budgetShell, isWideLayout && styles.budgetShellWide]}>
+                <View
+                  style={[styles.budgetComposerPane, isWideLayout && styles.budgetComposerPaneWide]}
+                >
+                  <View style={styles.totalCard}>
+                    <Text style={styles.totalLabel}>Current shared total</Text>
+                    <Text style={styles.totalValue}>${budgetTotal.toFixed(2)}</Text>
+                  </View>
 
-              {isBudgetClosed ? (
-                <View style={styles.closedSummaryCard}>
-                  <Text style={styles.feedTitle}>{selectedBudgetTrip} budget closed</Text>
-                  <Text style={styles.feedMeta}>
-                    {visibleBudgetItems.length} expenses recorded and reconciled for this trip.
-                  </Text>
-                  <TouchableOpacity style={styles.secondaryAction} onPress={reopenBudgetTrip}>
-                    <Text style={styles.secondaryActionText}>Reopen budget</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <>
-                  <View style={styles.editorCard}>
-                    <Text style={styles.subsectionTitle}>Add a custom expense</Text>
-                    <View style={styles.inputStack}>
-                      <Text style={styles.fieldLabel}>
-                        Expense item <Text style={styles.requiredMark}>*</Text>
+                  {isBudgetClosed ? (
+                    <View style={styles.closedSummaryCard}>
+                      <Text style={styles.feedTitle}>{selectedBudgetTrip} budget closed</Text>
+                      <Text style={styles.feedMeta}>
+                        {visibleBudgetItems.length} expenses recorded and reconciled for this trip.
                       </Text>
-                      <TextInput value={draftBudgetLabel} onChangeText={setDraftBudgetLabel} placeholder="Expense item, ex: dinner reservation" placeholderTextColor="#A08F89" style={styles.textInput} />
-                      <Text style={styles.fieldLabel}>
-                        Category <Text style={styles.requiredMark}>*</Text>
-                      </Text>
-                      <View style={styles.selectWrap}>
-                        <TouchableOpacity style={styles.selectButton} onPress={() => setOpenBudgetCategoryMenu((current) => (current === "new" ? null : "new"))}>
-                          <Text style={[styles.selectButtonText, !draftBudgetCategory && styles.selectPlaceholder]}>
-                            {draftBudgetCategory || "Choose category"}
-                          </Text>
-                          <Text style={styles.selectChevron}>{openBudgetCategoryMenu === "new" ? "▲" : "▼"}</Text>
-                        </TouchableOpacity>
-                        {openBudgetCategoryMenu === "new" ? (
-                          <View style={styles.optionList}>
-                            {budgetCategories.map((category) => (
-                              <TouchableOpacity key={category} style={styles.optionRow} onPress={() => { setDraftBudgetCategory(category); setOpenBudgetCategoryMenu(null); }}>
-                                <Text style={styles.optionText}>{category}</Text>
-                              </TouchableOpacity>
-                            ))}
-                          </View>
-                        ) : null}
-                      </View>
-                      <Text style={styles.fieldLabel}>
-                        Who paid <Text style={styles.requiredMark}>*</Text>
-                      </Text>
-                      <View style={styles.selectWrap}>
-                        <TouchableOpacity style={styles.selectButton} onPress={() => setOpenBudgetPayerMenu((current) => (current === "new" ? null : "new"))}>
-                          <Text style={[styles.selectButtonText, !draftBudgetPayer && styles.selectPlaceholder]}>
-                            {draftBudgetPayer || "Who paid?"}
-                          </Text>
-                          <Text style={styles.selectChevron}>{openBudgetPayerMenu === "new" ? "▲" : "▼"}</Text>
-                        </TouchableOpacity>
-                        {openBudgetPayerMenu === "new" ? (
-                          <View style={styles.optionList}>
-                            {budgetPayerOptions.map((payer) => (
-                              <TouchableOpacity key={payer} style={styles.optionRow} onPress={() => { setDraftBudgetPayer(payer); setOpenBudgetPayerMenu(null); }}>
-                                <Text style={styles.optionText}>{payer}</Text>
-                              </TouchableOpacity>
-                            ))}
-                          </View>
-                        ) : null}
-                      </View>
-                      <Text style={styles.fieldLabel}>
-                        Amount <Text style={styles.requiredMark}>*</Text>
-                      </Text>
-                      <TextInput value={draftBudgetAmount} onChangeText={setDraftBudgetAmount} placeholder="Amount, ex: 42" placeholderTextColor="#A08F89" style={styles.textInput} keyboardType="decimal-pad" />
+                      <TouchableOpacity style={styles.secondaryAction} onPress={reopenBudgetTrip}>
+                        <Text style={styles.secondaryActionText}>Reopen budget</Text>
+                      </TouchableOpacity>
                     </View>
-                    <TouchableOpacity style={styles.primaryButton} onPress={addCustomBudgetItem}>
-                      <Text style={styles.primaryButtonText}>Add expense</Text>
-                    </TouchableOpacity>
+                  ) : (
+                    <>
+                      <View style={styles.editorCard}>
+                        <Text style={styles.subsectionTitle}>Add a custom expense</Text>
+                        <View style={styles.inputStack}>
+                          <Text style={styles.fieldLabel}>
+                            Expense item <Text style={styles.requiredMark}>*</Text>
+                          </Text>
+                          <TextInput value={draftBudgetLabel} onChangeText={setDraftBudgetLabel} placeholder="Expense item, ex: dinner reservation" placeholderTextColor="#A08F89" style={styles.textInput} />
+                          <Text style={styles.fieldLabel}>
+                            Category <Text style={styles.requiredMark}>*</Text>
+                          </Text>
+                          <View style={styles.selectWrap}>
+                            <TouchableOpacity style={styles.selectButton} onPress={() => setOpenBudgetCategoryMenu((current) => (current === "new" ? null : "new"))}>
+                              <Text style={[styles.selectButtonText, !draftBudgetCategory && styles.selectPlaceholder]}>
+                                {draftBudgetCategory || "Choose category"}
+                              </Text>
+                              <Text style={styles.selectChevron}>{openBudgetCategoryMenu === "new" ? "▲" : "▼"}</Text>
+                            </TouchableOpacity>
+                            {openBudgetCategoryMenu === "new" ? (
+                              <View style={styles.optionList}>
+                                {budgetCategories.map((category) => (
+                                  <TouchableOpacity key={category} style={styles.optionRow} onPress={() => { setDraftBudgetCategory(category); setOpenBudgetCategoryMenu(null); }}>
+                                    <Text style={styles.optionText}>{category}</Text>
+                                  </TouchableOpacity>
+                                ))}
+                              </View>
+                            ) : null}
+                          </View>
+                          <Text style={styles.fieldLabel}>
+                            Who paid <Text style={styles.requiredMark}>*</Text>
+                          </Text>
+                          <View style={styles.selectWrap}>
+                            <TouchableOpacity style={styles.selectButton} onPress={() => setOpenBudgetPayerMenu((current) => (current === "new" ? null : "new"))}>
+                              <Text style={[styles.selectButtonText, !draftBudgetPayer && styles.selectPlaceholder]}>
+                                {draftBudgetPayer || "Who paid?"}
+                              </Text>
+                              <Text style={styles.selectChevron}>{openBudgetPayerMenu === "new" ? "▲" : "▼"}</Text>
+                            </TouchableOpacity>
+                            {openBudgetPayerMenu === "new" ? (
+                              <View style={styles.optionList}>
+                                {budgetPayerOptions.map((payer) => (
+                                  <TouchableOpacity key={payer} style={styles.optionRow} onPress={() => { setDraftBudgetPayer(payer); setOpenBudgetPayerMenu(null); }}>
+                                    <Text style={styles.optionText}>{payer}</Text>
+                                  </TouchableOpacity>
+                                ))}
+                              </View>
+                            ) : null}
+                          </View>
+                          <Text style={styles.fieldLabel}>
+                            Amount <Text style={styles.requiredMark}>*</Text>
+                          </Text>
+                          <TextInput value={draftBudgetAmount} onChangeText={setDraftBudgetAmount} placeholder="Amount, ex: 42" placeholderTextColor="#A08F89" style={styles.textInput} keyboardType="decimal-pad" />
+                        </View>
+                        <TouchableOpacity style={styles.primaryButton} onPress={addCustomBudgetItem}>
+                          <Text style={styles.primaryButtonText}>Add expense</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <View style={styles.budgetQuickAddCard}>
+                        <Text style={styles.controlLabel}>Quick add shared expenses</Text>
+                        <View style={styles.budgetQuickAddList}>
+                          {visibleBudgetSuggestions.map((item) => {
+                            const alreadyAdded = budgetItems.some((entry) => entry.id === item.id);
+
+                            return (
+                              <TouchableOpacity key={item.id} style={[styles.budgetRow, alreadyAdded && styles.budgetRowDisabled]} onPress={() => addBudgetItem(item)} disabled={alreadyAdded} activeOpacity={0.9}>
+                                <View style={styles.toolCopy}>
+                                  <Text style={styles.feedMeta}>{item.label}</Text>
+                                  <Text style={styles.helperMeta}>
+                                    {item.category} | {item.payer} paid | ${item.amount.toFixed(2)}
+                                  </Text>
+                                </View>
+                                <Text style={styles.addBudgetText}>{alreadyAdded ? "Added" : "Add"}</Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </View>
+
+                      <TouchableOpacity style={styles.secondaryAction} onPress={closeBudgetTrip}>
+                        <Text style={styles.secondaryActionText}>Close out this trip budget</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
+
+                <View style={[styles.budgetLedgerPane, isWideLayout && styles.budgetLedgerPaneWide]}>
+                  <View style={styles.budgetLedgerHeader}>
+                    <Text style={styles.subsectionTitle}>Recorded expenses</Text>
+                    <Text style={styles.helperMeta}>
+                      {visibleBudgetItems.length} {visibleBudgetItems.length === 1 ? "item" : "items"}
+                    </Text>
                   </View>
 
                   {visibleBudgetItems.map((item) => (
@@ -2188,29 +2238,8 @@ export function TripsScreen() {
                       <Text style={styles.feedMeta}>No shared costs yet. Add the first one so the trip feels lighter to carry together.</Text>
                     </View>
                   ) : null}
-
-                  <Text style={styles.controlLabel}>Quick add shared expenses</Text>
-                  {visibleBudgetSuggestions.map((item) => {
-                    const alreadyAdded = budgetItems.some((entry) => entry.id === item.id);
-
-                    return (
-                      <TouchableOpacity key={item.id} style={[styles.budgetRow, alreadyAdded && styles.budgetRowDisabled]} onPress={() => addBudgetItem(item)} disabled={alreadyAdded} activeOpacity={0.9}>
-                        <View style={styles.toolCopy}>
-                          <Text style={styles.feedMeta}>{item.label}</Text>
-                          <Text style={styles.helperMeta}>
-                            {item.category} | {item.payer} paid | ${item.amount.toFixed(2)}
-                          </Text>
-                        </View>
-                        <Text style={styles.addBudgetText}>{alreadyAdded ? "Added" : "Add"}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-
-                  <TouchableOpacity style={styles.secondaryAction} onPress={closeBudgetTrip}>
-                    <Text style={styles.secondaryActionText}>Close out this trip budget</Text>
-                  </TouchableOpacity>
-                </>
-              )}
+                </View>
+              </View>
             </>
           ) : (
             <View style={styles.emptyState}>
@@ -2728,6 +2757,48 @@ const styles = StyleSheet.create({
   },
   budgetRowDisabled: {
     opacity: 0.7,
+  },
+  budgetShell: {
+    gap: 14,
+  },
+  budgetShellWide: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 16,
+  },
+  budgetComposerPane: {
+    gap: 14,
+  },
+  budgetComposerPaneWide: {
+    width: 420,
+    flexShrink: 0,
+    position: "sticky" as any,
+    top: 24 as any,
+  },
+  budgetLedgerPane: {
+    gap: 12,
+  },
+  budgetLedgerPaneWide: {
+    flex: 1,
+    minWidth: 0,
+  },
+  budgetLedgerHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  budgetQuickAddCard: {
+    gap: 10,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: palette.line,
+    backgroundColor: "#FFF8F2",
+    padding: 14,
+  },
+  budgetQuickAddList: {
+    gap: 10,
   },
   budgetEditorRow: {
     gap: 10,
