@@ -141,6 +141,9 @@ export interface VisitPlan {
 export interface ItineraryItem {
   id: string;
   visitTitle: string;
+  dateValue?: string;
+  startTime?: string;
+  endTime?: string;
   time: string;
   title: string;
   detail: string;

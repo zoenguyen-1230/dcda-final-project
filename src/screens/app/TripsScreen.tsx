@@ -22,6 +22,8 @@ import {
 import { locationDirectory } from "../../data/locationDirectory";
 import {
   formatDateRange,
+  buildDateRangeValues,
+  inputValueToDisplayDate,
   getMonthNames,
   parseDateValue,
 } from "../../lib/dateHelpers";
@@ -30,7 +32,7 @@ import { deleteSharedVisitPlan, saveSharedVisitPlan } from "../../lib/sharedTrip
 import { useAppData } from "../../providers/AppDataProvider";
 import { useAuth } from "../../providers/AuthProvider";
 import { useProfile } from "../../providers/ProfileProvider";
-import { BudgetItem, FlightLeg, VisitPlan } from "../../types";
+import { BudgetItem, FlightLeg, ItineraryItem, VisitPlan } from "../../types";
 import { palette } from "../../theme/palette";
 import { typography } from "../../theme/typography";
 
@@ -53,13 +55,7 @@ type BudgetStarterIdea = {
   helper: string;
 };
 type ParsedItineraryEvent = {
-  item: {
-    id: string;
-    visitTitle: string;
-    time: string;
-    title: string;
-    detail: string;
-  };
+  item: ItineraryItem;
   startMinutes: number;
   endMinutes: number;
 };
@@ -70,6 +66,39 @@ const toolkitSectionById: Record<string, ToolkitSectionKey> = {
   "toolkit-3": "packing",
   "toolkit-4": "budget",
 };
+const itineraryTimeOptions = [
+  "7:00 AM",
+  "7:30 AM",
+  "8:00 AM",
+  "8:30 AM",
+  "9:00 AM",
+  "9:30 AM",
+  "10:00 AM",
+  "10:30 AM",
+  "11:00 AM",
+  "11:30 AM",
+  "12:00 PM",
+  "12:30 PM",
+  "1:00 PM",
+  "1:30 PM",
+  "2:00 PM",
+  "2:30 PM",
+  "3:00 PM",
+  "3:30 PM",
+  "4:00 PM",
+  "4:30 PM",
+  "5:00 PM",
+  "5:30 PM",
+  "6:00 PM",
+  "6:30 PM",
+  "7:00 PM",
+  "7:30 PM",
+  "8:00 PM",
+  "8:30 PM",
+  "9:00 PM",
+  "9:30 PM",
+  "10:00 PM",
+];
 
 function getDaysAway(dateValue: string) {
   const tripDate = new Date(`${dateValue}T12:00:00`);
@@ -230,7 +259,22 @@ function inferTimeWindow(
   return null;
 }
 
-function parseItineraryEvent(timeLabel: string, title: string, detail: string) {
+function parseItineraryEvent(item: ItineraryItem) {
+  if (item.startTime) {
+    const parsedStart = parseClockValue(item.startTime);
+    const parsedEnd = item.endTime ? parseClockValue(item.endTime) : null;
+
+    if (parsedStart !== null) {
+      return {
+        startMinutes: parsedStart,
+        endMinutes: parsedEnd !== null && parsedEnd > parsedStart ? parsedEnd : parsedStart + 90,
+      };
+    }
+  }
+
+  const timeLabel = item.time;
+  const title = item.title;
+  const detail = item.detail;
   const normalized = timeLabel.replace(/\u2013/g, "-").replace(/\s+to\s+/gi, "-");
   const [startText, endText] = normalized.split("-").map((part) => part.trim());
   const parsedStart = startText ? parseClockValue(startText) : null;
@@ -254,6 +298,20 @@ function formatTimelineHour(hour: number) {
   const normalizedHour = hour % 12 || 12;
 
   return `${normalizedHour} ${suffix}`;
+}
+
+function formatTripDayLabel(dateValue: string) {
+  const date = parseDateValue(dateValue);
+
+  if (!date) {
+    return dateValue;
+  }
+
+  return date.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 export function TripsScreen() {
@@ -360,7 +418,13 @@ export function TripsScreen() {
   const [openTrackedFlightPersonMenu, setOpenTrackedFlightPersonMenu] = useState(false);
   const [openTrackedFlightDirectionMenu, setOpenTrackedFlightDirectionMenu] = useState(false);
   const [selectedVisitTitle, setSelectedVisitTitle] = useState(initialTrips[0]?.title ?? "");
-  const [draftTime, setDraftTime] = useState("");
+  const [selectedItineraryDate, setSelectedItineraryDate] = useState(
+    initialTrips[0]?.startDate ?? ""
+  );
+  const [draftItineraryStartTime, setDraftItineraryStartTime] = useState("9:00 AM");
+  const [draftItineraryEndTime, setDraftItineraryEndTime] = useState("10:30 AM");
+  const [openItineraryStartTimeMenu, setOpenItineraryStartTimeMenu] = useState(false);
+  const [openItineraryEndTimeMenu, setOpenItineraryEndTimeMenu] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftDetail, setDraftDetail] = useState("");
   const [selectedPackingTrip, setSelectedPackingTrip] = useState(
@@ -458,12 +522,29 @@ export function TripsScreen() {
     () => orderedActiveTrips.find((trip) => trip.title === selectedVisitTitle) ?? null,
     [orderedActiveTrips, selectedVisitTitle]
   );
+  const itineraryDateOptions = useMemo(
+    () =>
+      selectedVisitPlan
+        ? buildDateRangeValues(selectedVisitPlan.startDate, selectedVisitPlan.endDate)
+        : [],
+    [selectedVisitPlan]
+  );
+  const activeItineraryDate =
+    selectedItineraryDate || itineraryDateOptions[0] || selectedVisitPlan?.startDate || "";
   const parsedItinerary = useMemo(() => {
     const scheduled: ParsedItineraryEvent[] = [];
     const unscheduled: typeof visibleItinerary = [];
 
-    visibleItinerary.forEach((item) => {
-      const parsed = parseItineraryEvent(item.time, item.title, item.detail);
+    visibleItinerary
+      .filter((item) => {
+        if (!activeItineraryDate) {
+          return true;
+        }
+
+        return (item.dateValue ?? selectedVisitPlan?.startDate ?? "") === activeItineraryDate;
+      })
+      .forEach((item) => {
+      const parsed = parseItineraryEvent(item);
 
       if (!parsed) {
         unscheduled.push(item);
@@ -500,7 +581,7 @@ export function TripsScreen() {
       latestHour,
       hours,
     };
-  }, [visibleItinerary]);
+  }, [activeItineraryDate, selectedVisitPlan?.startDate, visibleItinerary]);
 
   const visiblePackingItems = useMemo(
     () => packingItems.filter((item) => item.trip === selectedPackingTrip),
@@ -835,19 +916,28 @@ export function TripsScreen() {
   };
 
   const addItineraryItem = () => {
-    const time = draftTime.trim();
     const title = draftTitle.trim();
     const detail = draftDetail.trim();
+    const startTime = draftItineraryStartTime.trim();
+    const endTime = draftItineraryEndTime.trim();
+    const selectedDate = activeItineraryDate.trim();
+    const startMinutes = parseClockValue(startTime);
+    const endMinutes = parseClockValue(endTime);
 
-    if (!time || !title || !detail) {
+    if (!selectedDate || !title || startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
       return;
     }
+
+    const time = `${startTime} - ${endTime}`;
 
     const nextItineraryItems = [
       ...itineraryItems,
       {
         id: `itinerary-${Date.now()}`,
         visitTitle: selectedVisitTitle,
+        dateValue: selectedDate,
+        startTime,
+        endTime,
         time,
         title,
         detail,
@@ -855,7 +945,6 @@ export function TripsScreen() {
     ];
 
     setItineraryItems(nextItineraryItems);
-    setDraftTime("");
     setDraftTitle("");
     setDraftDetail("");
     void persistSharedTripToolkit({
@@ -1632,7 +1721,7 @@ export function TripsScreen() {
       !selectedBudgetTrip ||
       !orderedActiveTrips.some((trip) => trip.location === selectedBudgetTrip)
     ) {
-      setSelectedBudgetTrip(selectedTrip.location);
+    setSelectedBudgetTrip(selectedTrip.location);
     }
   }, [
     isCreatingTrip,
@@ -1644,6 +1733,19 @@ export function TripsScreen() {
     selectedTripId,
     selectedVisitTitle,
   ]);
+
+  useEffect(() => {
+    if (!itineraryDateOptions.length) {
+      if (selectedItineraryDate) {
+        setSelectedItineraryDate("");
+      }
+      return;
+    }
+
+    if (!selectedItineraryDate || !itineraryDateOptions.includes(selectedItineraryDate)) {
+      setSelectedItineraryDate(itineraryDateOptions[0]);
+    }
+  }, [itineraryDateOptions, selectedItineraryDate]);
 
   return (
     <ScreenSurface ref={tripsScrollRef}>
@@ -1871,35 +1973,111 @@ export function TripsScreen() {
                   <Text style={styles.subsectionTitle}>Add an itinerary item</Text>
                   <View style={styles.inputStack}>
                     <Text style={styles.fieldLabel}>
+                      Trip day <Text style={styles.requiredMark}>*</Text>
+                    </Text>
+                    <View style={styles.itineraryDatePicker}>
+                      {itineraryDateOptions.map((dateValue) => (
+                        <TouchableOpacity
+                          key={`itinerary-date-${dateValue}`}
+                          style={[
+                            styles.itineraryDateChip,
+                            activeItineraryDate === dateValue && styles.itineraryDateChipActive,
+                          ]}
+                          onPress={() => setSelectedItineraryDate(dateValue)}
+                          activeOpacity={0.9}
+                        >
+                          <Text
+                            style={[
+                              styles.itineraryDateChipWeekday,
+                              activeItineraryDate === dateValue &&
+                                styles.itineraryDateChipWeekdayActive,
+                            ]}
+                          >
+                            {formatTripDayLabel(dateValue).split(" ")[0]}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.itineraryDateChipDay,
+                              activeItineraryDate === dateValue &&
+                                styles.itineraryDateChipDayActive,
+                            ]}
+                          >
+                            {formatTripDayLabel(dateValue).split(" ").slice(1).join(" ")}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    <Text style={styles.fieldLabel}>
                       Time range <Text style={styles.requiredMark}>*</Text>
                     </Text>
-                    <TextInput value={draftTime} onChangeText={setDraftTime} placeholder="Time range, ex: 9:00 AM - 10:30 AM" placeholderTextColor="#A08F89" style={styles.textInput} />
-                    <Text style={styles.helperMeta}>
-                      The day view works best with a real time range like `9:00 AM - 10:30 AM`.
-                    </Text>
-                    <View style={styles.chipWrap}>
-                      {[
-                        { label: "Morning", value: "9:00 AM - 10:30 AM" },
-                        { label: "Lunch", value: "12:00 PM - 1:30 PM" },
-                        { label: "Afternoon", value: "2:00 PM - 4:00 PM" },
-                        { label: "Dinner", value: "6:30 PM - 8:30 PM" },
-                      ].map((preset) => (
-                        <FilterChip
-                          key={preset.label}
-                          label={preset.label}
-                          active={draftTime === preset.value}
-                          onPress={() => setDraftTime(preset.value)}
-                        />
-                      ))}
+                    <View style={styles.itineraryTimeRow}>
+                      <View style={[styles.selectWrap, styles.metaInput]}>
+                        <TouchableOpacity
+                          style={styles.selectButton}
+                          onPress={() =>
+                            setOpenItineraryStartTimeMenu((current) => !current)
+                          }
+                        >
+                          <Text style={styles.selectButtonText}>{draftItineraryStartTime}</Text>
+                          <Text style={styles.selectChevron}>
+                            {openItineraryStartTimeMenu ? "▲" : "▼"}
+                          </Text>
+                        </TouchableOpacity>
+                        {openItineraryStartTimeMenu ? (
+                          <View style={styles.optionList}>
+                            {itineraryTimeOptions.map((timeOption) => (
+                              <TouchableOpacity
+                                key={`start-${timeOption}`}
+                                style={styles.optionRow}
+                                onPress={() => {
+                                  setDraftItineraryStartTime(timeOption);
+                                  setOpenItineraryStartTimeMenu(false);
+                                }}
+                              >
+                                <Text style={styles.optionText}>{timeOption}</Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        ) : null}
+                      </View>
+                      <View style={[styles.selectWrap, styles.metaInput]}>
+                        <TouchableOpacity
+                          style={styles.selectButton}
+                          onPress={() =>
+                            setOpenItineraryEndTimeMenu((current) => !current)
+                          }
+                        >
+                          <Text style={styles.selectButtonText}>{draftItineraryEndTime}</Text>
+                          <Text style={styles.selectChevron}>
+                            {openItineraryEndTimeMenu ? "▲" : "▼"}
+                          </Text>
+                        </TouchableOpacity>
+                        {openItineraryEndTimeMenu ? (
+                          <View style={styles.optionList}>
+                            {itineraryTimeOptions.map((timeOption) => (
+                              <TouchableOpacity
+                                key={`end-${timeOption}`}
+                                style={styles.optionRow}
+                                onPress={() => {
+                                  setDraftItineraryEndTime(timeOption);
+                                  setOpenItineraryEndTimeMenu(false);
+                                }}
+                              >
+                                <Text style={styles.optionText}>{timeOption}</Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        ) : null}
+                      </View>
                     </View>
                     <Text style={styles.fieldLabel}>
                       Title <Text style={styles.requiredMark}>*</Text>
                     </Text>
                     <TextInput value={draftTitle} onChangeText={setDraftTitle} placeholder="Title, ex: Botanical Garden date" placeholderTextColor="#A08F89" style={styles.textInput} />
                     <Text style={styles.fieldLabel}>
-                      Details <Text style={styles.requiredMark}>*</Text>
+                      Details
                     </Text>
-                    <TextInput value={draftDetail} onChangeText={setDraftDetail} placeholder="Details, ex: bring camera + stop for coffee after" placeholderTextColor="#A08F89" style={[styles.textInput, styles.detailInput]} multiline />
+                    <TextInput value={draftDetail} onChangeText={setDraftDetail} placeholder="Optional details, ex: bring camera + stop for coffee after" placeholderTextColor="#A08F89" style={[styles.textInput, styles.detailInput]} multiline />
                   </View>
                   <TouchableOpacity style={styles.primaryButton} onPress={addItineraryItem}>
                     <Text style={styles.primaryButtonText}>Add to {selectedVisitTitle}</Text>
@@ -1915,7 +2093,11 @@ export function TripsScreen() {
                         </View>
                         <View style={styles.toolCopy}>
                           <Text style={styles.feedTitle}>{item.title}</Text>
-                          <Text style={styles.feedMeta}>{item.detail}</Text>
+                          <Text style={styles.feedMeta}>
+                            {[item.dateValue ? inputValueToDisplayDate(item.dateValue) : "", item.detail]
+                              .filter(Boolean)
+                              .join(" • ") || "No extra notes yet."}
+                          </Text>
                           <View style={styles.rowMeta}>
                             <Text style={styles.helperMeta}>
                               {completedItinerary.includes(item.id) ? "Marked as planned together" : "Tap to mark this part of the trip as planned"}
@@ -1946,13 +2128,41 @@ export function TripsScreen() {
                     <View style={styles.itineraryTimelineHeaderCopy}>
                       <Text style={styles.subsectionTitle}>Day view</Text>
                       <Text style={styles.feedMeta}>
-                        {selectedVisitPlan?.date || "Add trip dates to anchor the day"}
+                        {activeItineraryDate
+                          ? inputValueToDisplayDate(activeItineraryDate)
+                          : selectedVisitPlan?.date || "Add trip dates to anchor the day"}
                       </Text>
                     </View>
                     <Text style={styles.helperMeta}>
                       {selectedVisitPlan?.location || "Trip timeline"}
                     </Text>
                   </View>
+                  {itineraryDateOptions.length > 1 ? (
+                    <View style={styles.itineraryTimelineDateRow}>
+                      {itineraryDateOptions.map((dateValue) => (
+                        <TouchableOpacity
+                          key={`timeline-date-${dateValue}`}
+                          style={[
+                            styles.itineraryTimelineDateChip,
+                            activeItineraryDate === dateValue &&
+                              styles.itineraryTimelineDateChipActive,
+                          ]}
+                          onPress={() => setSelectedItineraryDate(dateValue)}
+                          activeOpacity={0.9}
+                        >
+                          <Text
+                            style={[
+                              styles.itineraryTimelineDateChipText,
+                              activeItineraryDate === dateValue &&
+                                styles.itineraryTimelineDateChipTextActive,
+                            ]}
+                          >
+                            {formatTripDayLabel(dateValue)}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  ) : null}
 
                   {parsedItinerary.scheduled.length ? (
                     <View style={styles.timelineShell}>
@@ -3111,6 +3321,47 @@ const styles = StyleSheet.create({
   itineraryList: {
     gap: 12,
   },
+  itineraryDatePicker: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  itineraryDateChip: {
+    minWidth: 88,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#EEDDD1",
+    backgroundColor: "#FFFCF8",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    alignItems: "center",
+    gap: 2,
+  },
+  itineraryDateChipActive: {
+    backgroundColor: palette.text,
+    borderColor: palette.text,
+  },
+  itineraryDateChipWeekday: {
+    color: palette.berry,
+    fontSize: 11,
+    fontFamily: typography.sansFamilyMedium,
+  },
+  itineraryDateChipWeekdayActive: {
+    color: "#F4C5D4",
+  },
+  itineraryDateChipDay: {
+    color: palette.text,
+    fontSize: 14,
+    fontFamily: typography.displayFamily,
+    fontWeight: "800",
+  },
+  itineraryDateChipDayActive: {
+    color: "#FFFFFF",
+  },
+  itineraryTimeRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
   itineraryTimelineCard: {
     gap: 14,
     backgroundColor: "#FFF8F2",
@@ -3128,6 +3379,31 @@ const styles = StyleSheet.create({
   },
   itineraryTimelineHeaderCopy: {
     gap: 4,
+  },
+  itineraryTimelineDateRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  itineraryTimelineDateChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#E4D1C8",
+    backgroundColor: "#FFFDFB",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  itineraryTimelineDateChipActive: {
+    backgroundColor: "#FFF1E7",
+    borderColor: "#E9B8A9",
+  },
+  itineraryTimelineDateChipText: {
+    color: palette.text,
+    fontSize: 12,
+    fontFamily: typography.sansFamilyMedium,
+  },
+  itineraryTimelineDateChipTextActive: {
+    color: palette.berry,
   },
   timelineShell: {
     flexDirection: "row",

@@ -123,3 +123,23 @@ export function buildCalendarCells(monthDate: Date) {
 
   return cells;
 }
+
+export function buildDateRangeValues(startDate: string, endDate?: string) {
+  const start = parseDateValue(startDate);
+  const end = parseDateValue(endDate || startDate);
+
+  if (!start || !end) {
+    return [];
+  }
+
+  const values: string[] = [];
+  const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 12, 0, 0);
+  const limit = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 12, 0, 0);
+
+  while (cursor <= limit) {
+    values.push(toDateValue(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return values;
+}

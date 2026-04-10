@@ -90,6 +90,9 @@ interface SharedTripChecklistPayload {
   plan: string;
   itineraryItems: Array<{
     id: string;
+    dateValue?: string;
+    startTime?: string;
+    endTime?: string;
     time: string;
     title: string;
     detail: string;
@@ -268,6 +271,9 @@ export async function fetchSharedTripToolkit(userId: string): Promise<{
       itineraryItems.push({
         id: remoteId,
         visitTitle: metadata.title,
+        dateValue: typeof item.dateValue === "string" ? item.dateValue : undefined,
+        startTime: typeof item.startTime === "string" ? item.startTime : undefined,
+        endTime: typeof item.endTime === "string" ? item.endTime : undefined,
         time: typeof item.time === "string" ? item.time : "",
         title: typeof item.title === "string" ? item.title : "",
         detail: typeof item.detail === "string" ? item.detail : "",
@@ -390,6 +396,9 @@ export async function saveSharedVisitPlan(input: {
       itineraryItems:
         input.itineraryItems?.map((item) => ({
           id: stripRemoteToolkitId("itinerary", remoteId ?? "local", item.id),
+          dateValue: item.dateValue,
+          startTime: item.startTime,
+          endTime: item.endTime,
           time: item.time,
           title: item.title,
           detail: item.detail,
