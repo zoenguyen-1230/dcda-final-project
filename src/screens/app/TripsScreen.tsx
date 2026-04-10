@@ -52,6 +52,17 @@ type BudgetStarterIdea = {
   category: string;
   helper: string;
 };
+type ParsedItineraryEvent = {
+  item: {
+    id: string;
+    visitTitle: string;
+    time: string;
+    title: string;
+    detail: string;
+  };
+  startMinutes: number;
+  endMinutes: number;
+};
 
 const toolkitSectionById: Record<string, ToolkitSectionKey> = {
   "toolkit-1": "flightDates",
@@ -155,6 +166,94 @@ function getParticipantNamesFromConnections(
   return connections
     .filter((connection) => participantIds.includes(connection.id))
     .map((connection) => connection.name);
+}
+
+function parseClockValue(value: string) {
+  const match = value.trim().match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/i);
+
+  if (!match) {
+    return null;
+  }
+
+  const hours = Number.parseInt(match[1], 10);
+  const minutes = Number.parseInt(match[2] ?? "0", 10);
+  const suffix = match[3].toLowerCase();
+
+  if (hours < 1 || hours > 12 || minutes < 0 || minutes > 59) {
+    return null;
+  }
+
+  const normalizedHours = hours % 12 + (suffix === "pm" ? 12 : 0);
+  return normalizedHours * 60 + minutes;
+}
+
+function inferTimeWindow(
+  rawValue: string,
+  title: string,
+  detail: string
+): { startMinutes: number; endMinutes: number } | null {
+  const value = rawValue.trim().toLowerCase();
+  const combined = `${value} ${title.toLowerCase()} ${detail.toLowerCase()}`;
+
+  if (combined.includes("breakfast") || combined.includes("coffee")) {
+    return { startMinutes: 9 * 60, endMinutes: 10 * 60 + 30 };
+  }
+
+  if (combined.includes("brunch")) {
+    return { startMinutes: 10 * 60 + 30, endMinutes: 12 * 60 };
+  }
+
+  if (combined.includes("lunch") || combined.includes("noon")) {
+    return { startMinutes: 12 * 60, endMinutes: 13 * 60 + 30 };
+  }
+
+  if (combined.includes("afternoon")) {
+    return { startMinutes: 14 * 60, endMinutes: 16 * 60 + 30 };
+  }
+
+  if (combined.includes("sunset") || combined.includes("golden hour")) {
+    return { startMinutes: 18 * 60, endMinutes: 19 * 60 + 30 };
+  }
+
+  if (combined.includes("dinner") || combined.includes("evening")) {
+    return { startMinutes: 18 * 60 + 30, endMinutes: 20 * 60 + 30 };
+  }
+
+  if (combined.includes("night")) {
+    return { startMinutes: 20 * 60, endMinutes: 22 * 60 };
+  }
+
+  if (combined.includes("morning")) {
+    return { startMinutes: 9 * 60, endMinutes: 11 * 60 };
+  }
+
+  return null;
+}
+
+function parseItineraryEvent(timeLabel: string, title: string, detail: string) {
+  const normalized = timeLabel.replace(/\u2013/g, "-").replace(/\s+to\s+/gi, "-");
+  const [startText, endText] = normalized.split("-").map((part) => part.trim());
+  const parsedStart = startText ? parseClockValue(startText) : null;
+  const parsedEnd = endText ? parseClockValue(endText) : null;
+
+  if (parsedStart !== null) {
+    const endMinutes =
+      parsedEnd !== null && parsedEnd > parsedStart ? parsedEnd : parsedStart + 90;
+
+    return {
+      startMinutes: parsedStart,
+      endMinutes,
+    };
+  }
+
+  return inferTimeWindow(timeLabel, title, detail);
+}
+
+function formatTimelineHour(hour: number) {
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const normalizedHour = hour % 12 || 12;
+
+  return `${normalizedHour} ${suffix}`;
 }
 
 export function TripsScreen() {
@@ -355,6 +454,53 @@ export function TripsScreen() {
     () => itineraryItems.filter((item) => item.visitTitle === selectedVisitTitle),
     [itineraryItems, selectedVisitTitle]
   );
+  const selectedVisitPlan = useMemo(
+    () => orderedActiveTrips.find((trip) => trip.title === selectedVisitTitle) ?? null,
+    [orderedActiveTrips, selectedVisitTitle]
+  );
+  const parsedItinerary = useMemo(() => {
+    const scheduled: ParsedItineraryEvent[] = [];
+    const unscheduled: typeof visibleItinerary = [];
+
+    visibleItinerary.forEach((item) => {
+      const parsed = parseItineraryEvent(item.time, item.title, item.detail);
+
+      if (!parsed) {
+        unscheduled.push(item);
+        return;
+      }
+
+      scheduled.push({
+        item,
+        startMinutes: parsed.startMinutes,
+        endMinutes: parsed.endMinutes,
+      });
+    });
+
+    scheduled.sort((left, right) => left.startMinutes - right.startMinutes);
+
+    const defaultStartHour = 8;
+    const defaultEndHour = 22;
+    const earliestHour = scheduled.length
+      ? Math.max(defaultStartHour, Math.floor(scheduled[0].startMinutes / 60) - 1)
+      : defaultStartHour;
+    const latestMinutes = scheduled.length
+      ? Math.max(...scheduled.map((entry) => entry.endMinutes))
+      : defaultEndHour * 60;
+    const latestHour = Math.max(defaultEndHour, Math.ceil(latestMinutes / 60) + 1);
+    const hours = Array.from(
+      { length: latestHour - earliestHour + 1 },
+      (_, index) => earliestHour + index
+    );
+
+    return {
+      scheduled,
+      unscheduled,
+      earliestHour,
+      latestHour,
+      hours,
+    };
+  }, [visibleItinerary]);
 
   const visiblePackingItems = useMemo(
     () => packingItems.filter((item) => item.trip === selectedPackingTrip),
@@ -407,7 +553,156 @@ export function TripsScreen() {
   }, [selectedBudgetPlan, liveConnections]);
   const budgetStarterIdeas = useMemo<BudgetStarterIdea[]>(() => {
     const cityName = selectedBudgetTrip.split(",")[0] || "Trip";
-    const starterIdeas: BudgetStarterIdea[] = [
+    const normalizedTrip = `${selectedBudgetTrip} ${selectedBudgetPlan?.title ?? ""} ${
+      selectedBudgetPlan?.plan ?? ""
+    }`.toLowerCase();
+
+    if (normalizedTrip.includes("yosemite")) {
+      return [
+        {
+          id: "starter-yosemite-gas",
+          label: "Yosemite gas split",
+          category: "Transport",
+          helper: "Useful for longer drives, park routes, or shared rental mileage.",
+        },
+        {
+          id: "starter-yosemite-entry",
+          label: "Park entry or day-use fee",
+          category: "Activities",
+          helper: "Good for entry fees, shuttle add-ons, or scenic stops.",
+        },
+        {
+          id: "starter-yosemite-groceries",
+          label: "Cabin groceries and snacks",
+          category: "Food",
+          helper: "Helpful for breakfast runs, trail snacks, and shared meals.",
+        },
+        {
+          id: "starter-yosemite-coffee",
+          label: "Coffee and road-trip treats",
+          category: "Food",
+          helper: "A good catch-all for cafe stops on the drive in or out.",
+        },
+      ];
+    }
+
+    if (normalizedTrip.includes("new york")) {
+      return [
+        {
+          id: "starter-nyc-subway",
+          label: "Subway or transit taps",
+          category: "Transport",
+          helper: "Perfect for train rides, ferries, or getting across neighborhoods.",
+        },
+        {
+          id: "starter-nyc-snacks",
+          label: "Chinatown snack crawl",
+          category: "Food",
+          helper: "Great for food crawls, pastries, boba, or casual bites.",
+        },
+        {
+          id: "starter-nyc-activity",
+          label: "Museum or date tickets",
+          category: "Activities",
+          helper: "Works for galleries, rowing, comedy, or ticketed plans.",
+        },
+        {
+          id: "starter-nyc-home",
+          label: "Home supplies or IKEA stop",
+          category: "Shopping",
+          helper: "Useful for design-store runs, gifts, or little apartment things.",
+        },
+      ];
+    }
+
+    if (normalizedTrip.includes("san francisco")) {
+      return [
+        {
+          id: "starter-sf-coffee",
+          label: "Bakery or coffee run",
+          category: "Food",
+          helper: "Good for a slow morning together or a quick neighborhood stop.",
+        },
+        {
+          id: "starter-sf-muni",
+          label: "Muni, rideshare, or parking",
+          category: "Transport",
+          helper: "Helpful for city transit, airport rides, or bridge parking.",
+        },
+        {
+          id: "starter-sf-family",
+          label: "Family dinner share",
+          category: "Food",
+          helper: "Great for splitting a bigger meal or picking up dessert on the way.",
+        },
+        {
+          id: "starter-sf-weekend",
+          label: "Weekend activity tickets",
+          category: "Activities",
+          helper: "Use for museums, ferries, local events, or Yosemite planning.",
+        },
+      ];
+    }
+
+    if (normalizedTrip.includes("austin")) {
+      return [
+        {
+          id: "starter-austin-brunch",
+          label: "Brunch or taco stop",
+          category: "Food",
+          helper: "Good for coffee, breakfast tacos, or late lunch together.",
+        },
+        {
+          id: "starter-austin-parking",
+          label: "Parking or rideshare",
+          category: "Transport",
+          helper: "Helpful for downtown parking, airport rides, or long-distance pickups.",
+        },
+        {
+          id: "starter-austin-music",
+          label: "Live music or cover fee",
+          category: "Activities",
+          helper: "Works for shows, small venues, or casual date-night plans.",
+        },
+        {
+          id: "starter-austin-snacks",
+          label: "Late-night snacks",
+          category: "Food",
+          helper: "Nice for dessert runs, food trucks, or after-dinner cravings.",
+        },
+      ];
+    }
+
+    if (normalizedTrip.includes("fort worth")) {
+      return [
+        {
+          id: "starter-fw-coffee",
+          label: `${cityName} coffee date`,
+          category: "Food",
+          helper: "A natural catch-all for slow starts, pastries, or cafe hangs.",
+        },
+        {
+          id: "starter-fw-museum",
+          label: "Museum tickets",
+          category: "Activities",
+          helper: "Perfect for Kimbell, exhibits, or other ticketed art plans.",
+        },
+        {
+          id: "starter-fw-garden",
+          label: "Garden or parking fee",
+          category: "Transport",
+          helper: "Helpful for parking, entry, or the little logistics around a day out.",
+        },
+        {
+          id: "starter-fw-dinner",
+          label: "Dinner or handroll stop",
+          category: "Food",
+          helper: "Use for barbecue, sashimi, dessert, or a nicer dinner plan.",
+        },
+      ];
+    }
+
+    return [
       {
         id: "starter-coffee",
         label: `${cityName} coffee stop`,
@@ -433,9 +728,7 @@ export function TripsScreen() {
         helper: "Works well for snacks, breakfast runs, or shared home meals.",
       },
     ];
-
-    return starterIdeas;
-  }, [selectedBudgetTrip]);
+  }, [selectedBudgetPlan, selectedBudgetTrip]);
 
   const visibleWeatherForecasts = useMemo(
     () =>
@@ -1567,52 +1860,171 @@ export function TripsScreen() {
               </View>
             </View>
 
-              <View style={styles.editorCard}>
-                <Text style={styles.subsectionTitle}>Add an itinerary item</Text>
-                <View style={styles.inputStack}>
-                  <Text style={styles.fieldLabel}>
-                    Time block <Text style={styles.requiredMark}>*</Text>
-                  </Text>
-                  <TextInput value={draftTime} onChangeText={setDraftTime} placeholder="Time block, ex: Sat night" placeholderTextColor="#A08F89" style={styles.textInput} />
-                  <Text style={styles.fieldLabel}>
-                    Title <Text style={styles.requiredMark}>*</Text>
-                  </Text>
-                  <TextInput value={draftTitle} onChangeText={setDraftTitle} placeholder="Title, ex: Botanical Garden date" placeholderTextColor="#A08F89" style={styles.textInput} />
-                  <Text style={styles.fieldLabel}>
-                    Details <Text style={styles.requiredMark}>*</Text>
-                  </Text>
-                  <TextInput value={draftDetail} onChangeText={setDraftDetail} placeholder="Details, ex: bring camera + stop for coffee after" placeholderTextColor="#A08F89" style={[styles.textInput, styles.detailInput]} multiline />
-                </View>
-                <TouchableOpacity style={styles.primaryButton} onPress={addItineraryItem}>
-                <Text style={styles.primaryButtonText}>Add to {selectedVisitTitle}</Text>
-              </TouchableOpacity>
-            </View>
-
-            {visibleItinerary.map((item) => (
-              <TouchableOpacity key={item.id} style={styles.toolCard} onPress={() => toggleItinerary(item.id)} activeOpacity={0.9}>
-                <View style={[styles.toolBadge, completedItinerary.includes(item.id) && styles.toolBadgeComplete]}>
-                  <Text style={styles.toolBadgeLabel}>{item.time}</Text>
-                </View>
-                <View style={styles.toolCopy}>
-                  <Text style={styles.feedTitle}>{item.title}</Text>
-                  <Text style={styles.feedMeta}>{item.detail}</Text>
-                  <View style={styles.rowMeta}>
-                    <Text style={styles.helperMeta}>
-                      {completedItinerary.includes(item.id) ? "Marked as planned together" : "Tap to mark this part of the trip as planned"}
+            <View style={[styles.itineraryShell, isWideLayout && styles.itineraryShellWide]}>
+              <View
+                style={[
+                  styles.itineraryComposerPane,
+                  isWideLayout && styles.itineraryComposerPaneWide,
+                ]}
+              >
+                <View style={styles.editorCard}>
+                  <Text style={styles.subsectionTitle}>Add an itinerary item</Text>
+                  <View style={styles.inputStack}>
+                    <Text style={styles.fieldLabel}>
+                      Time range <Text style={styles.requiredMark}>*</Text>
                     </Text>
-                    <TouchableOpacity onPress={() => removeItineraryItem(item.id)}>
-                      <Text style={styles.removeText}>Remove</Text>
-                    </TouchableOpacity>
+                    <TextInput value={draftTime} onChangeText={setDraftTime} placeholder="Time range, ex: 9:00 AM - 10:30 AM" placeholderTextColor="#A08F89" style={styles.textInput} />
+                    <Text style={styles.helperMeta}>
+                      The day view works best with a real time range like `9:00 AM - 10:30 AM`.
+                    </Text>
+                    <View style={styles.chipWrap}>
+                      {[
+                        { label: "Morning", value: "9:00 AM - 10:30 AM" },
+                        { label: "Lunch", value: "12:00 PM - 1:30 PM" },
+                        { label: "Afternoon", value: "2:00 PM - 4:00 PM" },
+                        { label: "Dinner", value: "6:30 PM - 8:30 PM" },
+                      ].map((preset) => (
+                        <FilterChip
+                          key={preset.label}
+                          label={preset.label}
+                          active={draftTime === preset.value}
+                          onPress={() => setDraftTime(preset.value)}
+                        />
+                      ))}
+                    </View>
+                    <Text style={styles.fieldLabel}>
+                      Title <Text style={styles.requiredMark}>*</Text>
+                    </Text>
+                    <TextInput value={draftTitle} onChangeText={setDraftTitle} placeholder="Title, ex: Botanical Garden date" placeholderTextColor="#A08F89" style={styles.textInput} />
+                    <Text style={styles.fieldLabel}>
+                      Details <Text style={styles.requiredMark}>*</Text>
+                    </Text>
+                    <TextInput value={draftDetail} onChangeText={setDraftDetail} placeholder="Details, ex: bring camera + stop for coffee after" placeholderTextColor="#A08F89" style={[styles.textInput, styles.detailInput]} multiline />
                   </View>
+                  <TouchableOpacity style={styles.primaryButton} onPress={addItineraryItem}>
+                    <Text style={styles.primaryButtonText}>Add to {selectedVisitTitle}</Text>
+                  </TouchableOpacity>
                 </View>
-              </TouchableOpacity>
-            ))}
 
-            {!visibleItinerary.length ? (
-              <View style={styles.emptyState}>
-                <Text style={styles.feedMeta}>Nothing is mapped out yet. Add one small anchor and let the rest grow around it.</Text>
+                {visibleItinerary.length ? (
+                  <View style={styles.itineraryList}>
+                    {visibleItinerary.map((item) => (
+                      <TouchableOpacity key={item.id} style={styles.toolCard} onPress={() => toggleItinerary(item.id)} activeOpacity={0.9}>
+                        <View style={[styles.toolBadge, completedItinerary.includes(item.id) && styles.toolBadgeComplete]}>
+                          <Text style={styles.toolBadgeLabel}>{item.time}</Text>
+                        </View>
+                        <View style={styles.toolCopy}>
+                          <Text style={styles.feedTitle}>{item.title}</Text>
+                          <Text style={styles.feedMeta}>{item.detail}</Text>
+                          <View style={styles.rowMeta}>
+                            <Text style={styles.helperMeta}>
+                              {completedItinerary.includes(item.id) ? "Marked as planned together" : "Tap to mark this part of the trip as planned"}
+                            </Text>
+                            <TouchableOpacity onPress={() => removeItineraryItem(item.id)}>
+                              <Text style={styles.removeText}>Remove</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : (
+                  <View style={styles.emptyState}>
+                    <Text style={styles.feedMeta}>Nothing is mapped out yet. Add one small anchor and let the rest grow around it.</Text>
+                  </View>
+                )}
               </View>
-            ) : null}
+
+              <View
+                style={[
+                  styles.itineraryTimelinePane,
+                  isWideLayout && styles.itineraryTimelinePaneWide,
+                ]}
+              >
+                <View style={styles.itineraryTimelineCard}>
+                  <View style={styles.itineraryTimelineHeader}>
+                    <View style={styles.itineraryTimelineHeaderCopy}>
+                      <Text style={styles.subsectionTitle}>Day view</Text>
+                      <Text style={styles.feedMeta}>
+                        {selectedVisitPlan?.date || "Add trip dates to anchor the day"}
+                      </Text>
+                    </View>
+                    <Text style={styles.helperMeta}>
+                      {selectedVisitPlan?.location || "Trip timeline"}
+                    </Text>
+                  </View>
+
+                  {parsedItinerary.scheduled.length ? (
+                    <View style={styles.timelineShell}>
+                      <View style={styles.timelineLabels}>
+                        {parsedItinerary.hours.map((hour) => (
+                          <View key={`label-${hour}`} style={styles.timelineHourLabelWrap}>
+                            <Text style={styles.timelineHourLabel}>{formatTimelineHour(hour)}</Text>
+                          </View>
+                        ))}
+                      </View>
+                      <View
+                        style={[
+                          styles.timelineTrack,
+                          { height: parsedItinerary.hours.length * 72 },
+                        ]}
+                      >
+                        {parsedItinerary.hours.map((hour, index) => (
+                          <View
+                            key={`line-${hour}`}
+                            style={[
+                              styles.timelineHourLine,
+                              { top: index * 72 },
+                            ]}
+                          />
+                        ))}
+                        {parsedItinerary.scheduled.map((entry) => {
+                          const top =
+                            ((entry.startMinutes - parsedItinerary.earliestHour * 60) / 60) * 72;
+                          const height = Math.max(
+                            54,
+                            ((entry.endMinutes - entry.startMinutes) / 60) * 72 - 6
+                          );
+
+                          return (
+                            <View
+                              key={`timeline-${entry.item.id}`}
+                              style={[styles.timelineEvent, { top, height }]}
+                            >
+                              <Text style={styles.timelineEventTime}>{entry.item.time}</Text>
+                              <Text style={styles.timelineEventTitle}>{entry.item.title}</Text>
+                              <Text style={styles.timelineEventDetail} numberOfLines={3}>
+                                {entry.item.detail}
+                              </Text>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={styles.emptyState}>
+                      <Text style={styles.feedMeta}>
+                        Add itinerary items with time ranges and they will stack here like a day planner.
+                      </Text>
+                    </View>
+                  )}
+
+                  {parsedItinerary.unscheduled.length ? (
+                    <View style={styles.unscheduledCard}>
+                      <Text style={styles.controlLabel}>Flexible plans</Text>
+                      {parsedItinerary.unscheduled.map((item) => (
+                        <View key={`unscheduled-${item.id}`} style={styles.unscheduledRow}>
+                          <Text style={styles.feedTitle}>{item.title}</Text>
+                          <Text style={styles.feedMeta}>
+                            {item.time} • add a more exact time to place it in the day view
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+            </View>
           </>
         ) : (
           <View style={styles.emptyState}>
@@ -2671,6 +3083,132 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: palette.line,
     padding: 14,
+  },
+  itineraryShell: {
+    gap: 14,
+  },
+  itineraryShellWide: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 16,
+  },
+  itineraryComposerPane: {
+    gap: 14,
+  },
+  itineraryComposerPaneWide: {
+    width: 430,
+    flexShrink: 0,
+    position: "sticky" as any,
+    top: 24 as any,
+  },
+  itineraryTimelinePane: {
+    gap: 12,
+  },
+  itineraryTimelinePaneWide: {
+    flex: 1,
+    minWidth: 0,
+  },
+  itineraryList: {
+    gap: 12,
+  },
+  itineraryTimelineCard: {
+    gap: 14,
+    backgroundColor: "#FFF8F2",
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: palette.line,
+    padding: 14,
+  },
+  itineraryTimelineHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  itineraryTimelineHeaderCopy: {
+    gap: 4,
+  },
+  timelineShell: {
+    flexDirection: "row",
+    gap: 12,
+    alignItems: "flex-start",
+  },
+  timelineLabels: {
+    width: 56,
+    paddingTop: 2,
+  },
+  timelineHourLabelWrap: {
+    height: 72,
+    justifyContent: "flex-start",
+  },
+  timelineHourLabel: {
+    color: palette.muted,
+    fontSize: 11,
+    fontFamily: typography.sansFamilyMedium,
+  },
+  timelineTrack: {
+    flex: 1,
+    borderRadius: 20,
+    backgroundColor: "#FFFCF9",
+    borderWidth: 1,
+    borderColor: "#EEDDD1",
+    position: "relative",
+    overflow: "hidden",
+  },
+  timelineHourLine: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: "#F2E5DD",
+  },
+  timelineEvent: {
+    position: "absolute",
+    left: 10,
+    right: 10,
+    borderRadius: 18,
+    backgroundColor: palette.softSun,
+    borderWidth: 1,
+    borderColor: "#EFDDB7",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 3,
+    shadowColor: "#2A1B18",
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  timelineEventTime: {
+    color: palette.berry,
+    fontSize: 11,
+    fontFamily: typography.sansFamilyMedium,
+  },
+  timelineEventTitle: {
+    color: palette.text,
+    fontSize: 15,
+    fontFamily: typography.displayFamily,
+    fontWeight: "800",
+    letterSpacing: -0.2,
+  },
+  timelineEventDetail: {
+    color: palette.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    fontFamily: typography.sansFamily,
+  },
+  unscheduledCard: {
+    gap: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#EEDDD1",
+    backgroundColor: "#FFFCF8",
+    padding: 12,
+  },
+  unscheduledRow: {
+    gap: 2,
+    paddingTop: 2,
   },
   subsectionBlock: {
     gap: 10,
