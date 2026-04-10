@@ -189,7 +189,7 @@ export function TripsScreen() {
   const initialSelectedTrip = initialTrips[0];
   const [selectedTripId, setSelectedTripId] = useState(initialTrips[0]?.id ?? "");
   const [isCreatingTrip, setIsCreatingTrip] = useState(!initialSelectedTrip);
-  const [tripEditorVisible, setTripEditorVisible] = useState(true);
+  const [tripEditorVisible, setTripEditorVisible] = useState(!initialSelectedTrip);
   const [tripDraftTitle, setTripDraftTitle] = useState(initialTrips[0]?.title ?? "");
   const [tripDraftLocation, setTripDraftLocation] = useState(initialTrips[0]?.location ?? "");
   const [tripDraftStartDate, setTripDraftStartDate] = useState(
@@ -810,7 +810,7 @@ export function TripsScreen() {
     });
   };
 
-  const loadTripIntoEditor = (tripId: string) => {
+  const loadTripIntoEditor = (tripId: string, options?: { openEditor?: boolean }) => {
     const trip = trips.find((item) => item.id === tripId);
 
     if (!trip) {
@@ -819,7 +819,9 @@ export function TripsScreen() {
 
     setIsCreatingTrip(false);
     setSelectedTripId(tripId);
-    setTripEditorVisible(true);
+    if (options?.openEditor !== false) {
+      setTripEditorVisible(true);
+    }
     setTripDraftTitle(trip.title);
     setTripDraftLocation(trip.location);
     setTripDraftStartDate(trip.startDate);
@@ -1244,7 +1246,7 @@ export function TripsScreen() {
       !selectedTripId ||
       !orderedActiveTrips.some((trip) => trip.id === selectedTripId)
     ) {
-      loadTripIntoEditor(selectedTrip.id);
+      loadTripIntoEditor(selectedTrip.id, { openEditor: false });
       return;
     }
 
