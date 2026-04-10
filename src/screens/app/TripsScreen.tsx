@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { CalendarRangePicker } from "../../components/ui/CalendarRangePicker";
 import { FilterChip } from "../../components/ui/FilterChip";
 import { MultiSelectDropdown } from "../../components/ui/MultiSelectDropdown";
@@ -37,6 +37,14 @@ const budgetCategories = [
 ];
 
 const monthNames = getMonthNames();
+type ToolkitSectionKey = "flightDates" | "weather" | "packing" | "budget";
+
+const toolkitSectionById: Record<string, ToolkitSectionKey> = {
+  "toolkit-1": "flightDates",
+  "toolkit-2": "weather",
+  "toolkit-3": "packing",
+  "toolkit-4": "budget",
+};
 
 function getDaysAway(dateValue: string) {
   const tripDate = new Date(`${dateValue}T12:00:00`);
@@ -257,12 +265,31 @@ export function TripsScreen() {
   const [temperatureUnit, setTemperatureUnit] = useState<"fahrenheit" | "celsius">(
     "fahrenheit"
   );
+  const tripsScrollRef = useRef<ScrollView | null>(null);
+  const toolkitSectionOffsets = useRef<Partial<Record<ToolkitSectionKey, number>>>({});
   const [openCalendarPicker, setOpenCalendarPicker] = useState<
     "trip" | "flight" | "tracker" | null
   >(null);
   const [openTripParticipantMenu, setOpenTripParticipantMenu] = useState(false);
 
   const isEditingExistingTrip = !isCreatingTrip && selectedTripId !== "";
+
+  const registerToolkitSection = (section: ToolkitSectionKey, y: number) => {
+    toolkitSectionOffsets.current[section] = y;
+  };
+
+  const jumpToToolkitSection = (section: ToolkitSectionKey) => {
+    const offset = toolkitSectionOffsets.current[section];
+
+    if (typeof offset !== "number") {
+      return;
+    }
+
+    tripsScrollRef.current?.scrollTo({
+      y: Math.max(offset - 28, 0),
+      animated: true,
+    });
+  };
   const tripLocationSuggestions = useMemo(() => {
     const query = tripDraftLocation.trim().toLowerCase();
 
@@ -1263,7 +1290,7 @@ export function TripsScreen() {
   ]);
 
   return (
-    <ScreenSurface>
+    <ScreenSurface ref={tripsScrollRef}>
       <SectionCard
         title="Trip editor"
         subtitle="Add or update visits together so countdowns, packing, itinerary, and budget stay aligned"
@@ -1540,17 +1567,28 @@ export function TripsScreen() {
         variant="travel"
       >
         {tripToolkit.map((item) => (
-          <View key={item.id} style={styles.toolIntroCard}>
+          <TouchableOpacity
+            key={item.id}
+            style={styles.toolIntroCard}
+            activeOpacity={0.88}
+            onPress={() => jumpToToolkitSection(toolkitSectionById[item.id])}
+          >
             <View style={styles.toolIntroBadge}>
               <Text style={styles.toolIntroBadgeLabel}>{item.title}</Text>
             </View>
             <View style={styles.toolIntroCopy}>
               <Text style={styles.toolIntroDetail}>{item.detail}</Text>
+              <Text style={styles.toolIntroHint}>Jump to section</Text>
             </View>
-          </View>
+          </TouchableOpacity>
         ))}
 
-        <View style={styles.subsectionBlock}>
+        <View
+          style={styles.subsectionBlock}
+          onLayout={(event) =>
+            registerToolkitSection("flightDates", event.nativeEvent.layout.y)
+          }
+        >
           <Text style={styles.subsectionTitle}>Cheap flight date windows</Text>
           {orderedActiveTrips.length ? (
             <>
@@ -1876,7 +1914,10 @@ export function TripsScreen() {
           )}
         </View>
 
-        <View style={styles.subsectionBlock}>
+        <View
+          style={styles.subsectionBlock}
+          onLayout={(event) => registerToolkitSection("weather", event.nativeEvent.layout.y)}
+        >
           <View style={styles.rowMeta}>
             <Text style={styles.subsectionTitle}>Weather forecast by city</Text>
             <View style={styles.chipWrap}>
@@ -1919,7 +1960,10 @@ export function TripsScreen() {
           ) : null}
         </View>
 
-        <View style={styles.subsectionBlock}>
+        <View
+          style={styles.subsectionBlock}
+          onLayout={(event) => registerToolkitSection("packing", event.nativeEvent.layout.y)}
+        >
           <Text style={styles.subsectionTitle}>Packing checklist</Text>
           {orderedActiveTrips.length ? (
             <>
@@ -1988,7 +2032,10 @@ export function TripsScreen() {
           )}
         </View>
 
-        <View style={styles.subsectionBlock}>
+        <View
+          style={styles.subsectionBlock}
+          onLayout={(event) => registerToolkitSection("budget", event.nativeEvent.layout.y)}
+        >
           <Text style={styles.subsectionTitle}>Shared trip budget</Text>
           {orderedActiveTrips.length ? (
             <>
@@ -2265,26 +2312,26 @@ const styles = StyleSheet.create({
   },
   toolIntroCard: {
     flexDirection: "row",
-    gap: 18,
+    gap: 14,
     alignItems: "center",
     backgroundColor: "#FFF8F2",
     borderRadius: 22,
     borderWidth: 1,
     borderColor: palette.line,
-    paddingHorizontal: 18,
-    paddingVertical: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
   toolIntroBadge: {
-    minWidth: 152,
-    minHeight: 68,
-    borderRadius: 22,
+    minWidth: 132,
+    minHeight: 56,
+    borderRadius: 18,
     backgroundColor: "#FFF1E7",
     borderWidth: 1,
     borderColor: "#F4E6DF",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 18,
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
   },
   toolIntroBadgeLabel: {
     color: palette.berry,
@@ -2298,13 +2345,19 @@ const styles = StyleSheet.create({
   toolIntroCopy: {
     flex: 1,
     justifyContent: "center",
-    minHeight: 68,
+    minHeight: 56,
+    gap: 4,
   },
   toolIntroDetail: {
     color: palette.muted,
     fontSize: 14,
     lineHeight: 20,
     fontFamily: typography.sansFamily,
+  },
+  toolIntroHint: {
+    color: palette.berry,
+    fontSize: 12,
+    fontFamily: typography.sansFamilyMedium,
   },
   controlGroup: {
     gap: 8,
