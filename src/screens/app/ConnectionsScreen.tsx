@@ -119,6 +119,10 @@ export function ConnectionsScreen() {
     () => connections.filter((connection) => isSharedConnection(connection.id)),
     [connections]
   );
+  const visibleSentInvites = useMemo(
+    () => sentInvites.filter((invite) => invite.status === "pending"),
+    [sentInvites]
+  );
   const profileLocationSuggestions = useMemo(() => {
     const query = profileDraftLocation.trim().toLowerCase();
 
@@ -162,8 +166,9 @@ export function ConnectionsScreen() {
           fetchIncomingInvites(userEmail),
           fetchSentInvites(user.id),
         ]);
+        await syncSharedConnections();
         setIncomingInvites(incoming.filter((invite) => invite.status === "pending"));
-        setSentInvites(sent);
+        setSentInvites(sent.filter((invite) => invite.status === "pending"));
       } catch {
         setIncomingInvites([]);
         setSentInvites([]);
@@ -251,12 +256,30 @@ export function ConnectionsScreen() {
       return;
     }
 
+    const normalizedDraftName = draftName.trim().toLowerCase();
+    const normalizedRelationshipType =
+      draftRelationshipType === "all" ? "friend" : draftRelationshipType;
+    const matchingSharedConnection = connections.find(
+      (item) =>
+        isSharedConnection(item.id) &&
+        item.relationshipType === normalizedRelationshipType &&
+        item.name.trim().toLowerCase() === normalizedDraftName
+    );
+
+    if (matchingSharedConnection && !selectedPersonId) {
+      setSelectedPersonId(matchingSharedConnection.id);
+      setEditorVisible(false);
+      setInviteFeedback(
+        `${draftName.trim()} already has a connected Same Time profile, so I kept the shared version instead of creating a duplicate.`
+      );
+      return;
+    }
+
     const existingConnection = connections.find((item) => item.id === selectedPersonId);
     const nextConnection: Connection = {
       id: existingConnection?.id ?? `conn-${Date.now()}`,
       name: draftName.trim(),
-      relationshipType:
-        draftRelationshipType === "all" ? "friend" : draftRelationshipType,
+      relationshipType: normalizedRelationshipType,
       location: draftLocation.trim(),
       timezone: draftTimezone.trim(),
       photoLabel: draftPhotoLabel.trim(),
@@ -283,6 +306,21 @@ export function ConnectionsScreen() {
 
     void persistAppDataNow({ connections: nextConnections });
     setEditorVisible(false);
+  };
+
+  const deleteConnection = (connectionId: string) => {
+    if (isSharedConnection(connectionId)) {
+      return;
+    }
+
+    const nextConnections = connections.filter((connection) => connection.id !== connectionId);
+    setConnections(nextConnections);
+    void persistAppDataNow({ connections: nextConnections });
+
+    if (selectedPersonId === connectionId) {
+      setSelectedPersonId("");
+      setEditorVisible(false);
+    }
   };
 
   const syncSharedConnections = async () => {
@@ -421,6 +459,7 @@ export function ConnectionsScreen() {
       relationshipFocus: profileDraftRelationshipFocus.trim(),
       note: profileDraftNote.trim() || "Building this space one relationship at a time.",
       linkedSocials: profileDraftLinkedSocials,
+      connectedCalendars: profile.connectedCalendars ?? [],
       photoUri: profileDraftPhotoUri.trim() || undefined,
     };
 
@@ -805,6 +844,14 @@ export function ConnectionsScreen() {
                 {selectedPersonId ? "Save profile" : "Add person"}
               </Text>
             </TouchableOpacity>
+            {selectedPersonId && !isSharedConnection(selectedPersonId) ? (
+              <TouchableOpacity
+                style={[styles.ghostAction, styles.deleteConnectionButton]}
+                onPress={() => deleteConnection(selectedPersonId)}
+              >
+                <Text style={styles.ghostActionText}>Delete person</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : null}
       </SectionCard>
@@ -906,11 +953,11 @@ export function ConnectionsScreen() {
               </View>
             ) : null}
 
-            {sentInvites.length ? (
+            {visibleSentInvites.length ? (
               <View style={styles.editorCard}>
-                <Text style={styles.feedTitle}>Sent invites</Text>
+                <Text style={styles.feedTitle}>Pending invites</Text>
                 <View style={styles.feedStack}>
-                  {sentInvites.map((invite) => (
+                  {visibleSentInvites.map((invite) => (
                     <View key={invite.id} style={styles.feedCard}>
                       <View style={styles.feedCopy}>
                         <Text style={styles.feedTitle}>
@@ -1241,6 +1288,9 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.4,
     fontFamily: typography.sansFamilyMedium,
+  },
+  deleteConnectionButton: {
+    alignSelf: "flex-start",
   },
   primaryButton: {
     backgroundColor: palette.text,

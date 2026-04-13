@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Image,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -75,7 +76,7 @@ export function ChatScreen() {
   const { user } = useAuth();
   const { connections, messages, setMessages } = useAppData();
   const { profile } = useProfile();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const [selectedConnectionId, setSelectedConnectionId] = useState(connections[0]?.id ?? "");
   const [draftMessage, setDraftMessage] = useState("");
   const [draftType, setDraftType] = useState<"Text" | "Photo" | "Voice memo" | "Video message">(
@@ -89,6 +90,7 @@ export function ChatScreen() {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recorderStreamRef = useRef<MediaStream | null>(null);
   const recorderChunksRef = useRef<Blob[]>([]);
+  const threadScrollRef = useRef<ScrollView | null>(null);
 
   const liveMessages = useMemo(
     () => messages.filter((message) => message.connectionId === selectedConnectionId),
@@ -97,6 +99,9 @@ export function ChatScreen() {
 
   const selectedConnection = connections.find((connection) => connection.id === selectedConnectionId);
   const isWideLayout = width >= 1080;
+  const threadViewportHeight = isWideLayout
+    ? Math.min(Math.max(height - 280, 360), 720)
+    : Math.min(Math.max(height - 360, 260), 520);
 
   useEffect(() => {
     if (!selectedConnectionId && connections[0]?.id) {
@@ -126,6 +131,12 @@ export function ChatScreen() {
     },
     []
   );
+
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      threadScrollRef.current?.scrollToEnd({ animated: false });
+    });
+  }, [liveMessages.length, selectedConnectionId]);
 
   const sendMessage = async () => {
     const body = draftMessage.trim();
@@ -432,7 +443,21 @@ export function ChatScreen() {
                   </View>
                 ) : null}
 
-                <View style={[styles.threadStream, isWideLayout && styles.threadStreamWide]}>
+                <ScrollView
+                  ref={threadScrollRef}
+                  style={[
+                    styles.threadStream,
+                    isWideLayout && styles.threadStreamWide,
+                    { height: threadViewportHeight },
+                  ]}
+                  contentContainerStyle={styles.threadStreamContent}
+                  showsVerticalScrollIndicator
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                  onContentSizeChange={() =>
+                    threadScrollRef.current?.scrollToEnd({ animated: false })
+                  }
+                >
                   {liveMessages.length ? (
                     liveMessages.map((message) => (
                       <View
@@ -487,7 +512,7 @@ export function ChatScreen() {
                       </Text>
                     </View>
                   )}
-                </View>
+                </ScrollView>
 
                 <View style={[styles.composerCard, isWideLayout && styles.composerCardWide]}>
                   <View style={[styles.composerTopRow, isWideLayout && styles.composerTopRowWide]}>
@@ -649,9 +674,17 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   threadStream: {
-    gap: 12,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: palette.line,
+    backgroundColor: "#FFFCF9",
+    padding: 12,
   },
   threadStreamWide: {
+    paddingBottom: 0,
+  },
+  threadStreamContent: {
+    gap: 12,
     paddingBottom: 18,
   },
   feedTitle: {

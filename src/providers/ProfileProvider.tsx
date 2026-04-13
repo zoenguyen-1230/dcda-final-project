@@ -9,7 +9,7 @@ import React, {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { hasSupabaseCredentials } from "../config/env";
 import { readBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
-import { CurrentUserProfile, SocialPlatform } from "../types";
+import { CalendarProvider, CurrentUserProfile, SocialPlatform } from "../types";
 import { loadWorkspaceState, saveWorkspaceProfile } from "../lib/workspaceState";
 import { useAuth } from "./AuthProvider";
 
@@ -20,6 +20,7 @@ interface ProfileContextValue {
 }
 
 const defaultLinkedSocials: SocialPlatform[] = [];
+const defaultConnectedCalendars: CalendarProvider[] = [];
 
 function getProfileStorageKey(userEmail: string | null) {
   return userEmail ? `same-time-profile:${userEmail}` : null;
@@ -37,6 +38,7 @@ function hasMeaningfulProfileData(profile: Partial<CurrentUserProfile> | null | 
       profile.relationshipFocus ||
       profile.note ||
       profile.photoUri ||
+      (Array.isArray(profile.connectedCalendars) && profile.connectedCalendars.length) ||
       (Array.isArray(profile.linkedSocials) && profile.linkedSocials.length)
   );
 }
@@ -52,7 +54,59 @@ function buildDefaultProfile(
     relationshipFocus: "",
     note: "",
     linkedSocials: defaultLinkedSocials,
+    connectedCalendars: defaultConnectedCalendars,
     photoUri: "",
+  };
+}
+
+function mergeProfileSources(
+  defaultProfile: CurrentUserProfile,
+  workspaceProfile: Partial<CurrentUserProfile> | null | undefined,
+  localProfile: Partial<CurrentUserProfile> | null | undefined
+): CurrentUserProfile {
+  const pickString = (...values: Array<unknown>) => {
+    for (const value of values) {
+      if (typeof value === "string" && value.trim()) {
+        return value;
+      }
+    }
+
+    return "";
+  };
+
+  const pickArray = <T,>(...values: Array<unknown>) => {
+    for (const value of values) {
+      if (Array.isArray(value)) {
+        return value as T[];
+      }
+    }
+
+    return [] as T[];
+  };
+
+  return {
+    displayName:
+      pickString(localProfile?.displayName, workspaceProfile?.displayName, defaultProfile.displayName) ||
+      defaultProfile.displayName,
+    location: pickString(localProfile?.location, workspaceProfile?.location, defaultProfile.location),
+    timezone: pickString(localProfile?.timezone, workspaceProfile?.timezone, defaultProfile.timezone),
+    relationshipFocus: pickString(
+      localProfile?.relationshipFocus,
+      workspaceProfile?.relationshipFocus,
+      defaultProfile.relationshipFocus
+    ),
+    note: pickString(localProfile?.note, workspaceProfile?.note, defaultProfile.note),
+    linkedSocials: pickArray<SocialPlatform>(
+      localProfile?.linkedSocials,
+      workspaceProfile?.linkedSocials,
+      defaultProfile.linkedSocials
+    ),
+    connectedCalendars: pickArray<CalendarProvider>(
+      localProfile?.connectedCalendars,
+      workspaceProfile?.connectedCalendars,
+      defaultProfile.connectedCalendars
+    ),
+    photoUri: pickString(localProfile?.photoUri, workspaceProfile?.photoUri, defaultProfile.photoUri) || "",
   };
 }
 
@@ -92,22 +146,17 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
             : savedValue
               ? (JSON.parse(savedValue) as Partial<CurrentUserProfile>)
               : null;
-          const savedProfile = hasMeaningfulProfileData(workspace?.profile_data)
+          const workspaceProfile = hasMeaningfulProfileData(workspace?.profile_data)
             ? workspace?.profile_data
-            : localSavedProfile;
+            : null;
+          const savedProfile = mergeProfileSources(
+            defaultProfile,
+            workspaceProfile,
+            localSavedProfile
+          );
 
           startTransition(() => {
-            setProfile({
-              ...defaultProfile,
-              ...(savedProfile ?? {}),
-              linkedSocials: Array.isArray(savedProfile?.linkedSocials)
-                ? (savedProfile.linkedSocials as SocialPlatform[])
-                : defaultProfile.linkedSocials,
-              photoUri:
-                typeof savedProfile?.photoUri === "string"
-                  ? savedProfile.photoUri
-                  : defaultProfile.photoUri,
-            });
+            setProfile(savedProfile);
             setInitialized(true);
           });
           return;
@@ -129,17 +178,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
           const savedProfile = JSON.parse(savedValue) as Partial<CurrentUserProfile>;
 
           startTransition(() => {
-            setProfile({
-              ...defaultProfile,
-              ...savedProfile,
-              linkedSocials: Array.isArray(savedProfile.linkedSocials)
-                ? (savedProfile.linkedSocials as SocialPlatform[])
-                : defaultProfile.linkedSocials,
-              photoUri:
-                typeof savedProfile.photoUri === "string"
-                  ? savedProfile.photoUri
-                  : defaultProfile.photoUri,
-            });
+            setProfile(mergeProfileSources(defaultProfile, null, savedProfile));
             setInitialized(true);
           });
           return;

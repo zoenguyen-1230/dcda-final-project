@@ -3,58 +3,145 @@ import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { FilterChip } from "../../components/ui/FilterChip";
 import { ScreenSurface } from "../../components/ui/ScreenSurface";
 import { SectionCard } from "../../components/ui/SectionCard";
-import { dateIdeas, smartCallWindows } from "../../data/mockData";
+import { hasSupabaseCredentials } from "../../config/env";
+import { dateIdeas } from "../../data/mockData";
+import { inputValueToDisplayDate, parseDateValue, toDateValue } from "../../lib/dateHelpers";
+import { saveSharedCalendarEvent } from "../../lib/sharedContent";
+import { isSharedConnection } from "../../lib/sharedRelationships";
 import { useAppData } from "../../providers/AppDataProvider";
+import { useAuth } from "../../providers/AuthProvider";
+import { useProfile } from "../../providers/ProfileProvider";
 import { palette } from "../../theme/palette";
 import { typography } from "../../theme/typography";
+import { CalendarEvent, CalendarProvider } from "../../types";
 
-const alternateWindowsByPerson: Record<string, string[]> = {
-  Sean: [
-    "Wednesday 7:15 PM CT / 5:15 PM PT",
-    "Thursday 9:00 PM CT / 7:00 PM PT",
-    "Saturday 11:00 AM CT / 9:00 AM PT",
-  ],
-  Trang: [
-    "Friday 8:30 PM CT / 8:30 AM ICT",
-    "Sunday 9:00 AM CT / 9:00 PM ICT",
-  ],
-  Hien: [
-    "Monday 6:30 AM CT / 6:30 PM ICT",
-    "Saturday 8:00 AM CT / 8:00 PM ICT",
-  ],
+const calendarProviderOptions: CalendarProvider[] = [
+  "Google Calendar",
+  "Apple Calendar",
+  "Outlook",
+];
+const timezoneOffsets: Record<string, number> = {
+  PT: -2,
+  MT: -1,
+  CT: 0,
+  ET: 1,
+  ICT: 12,
+  GMT: 6,
+  UTC: 6,
+};
+const energyTemplates = {
+  low: { dayOffset: 1, startMinutes: 12 * 60 + 30, endMinutes: 13 * 60, confidence: "Low effort" },
+  steady: { dayOffset: 2, startMinutes: 20 * 60, endMinutes: 20 * 60 + 45, confidence: "High match" },
+  high: { dayOffset: 4, startMinutes: 9 * 60 + 30, endMinutes: 10 * 60 + 15, confidence: "Fresh energy" },
+} as const;
+
+type EnergyFit = "all" | "low" | "steady" | "high";
+type SmartCallWindow = {
+  id: string;
+  person: string;
+  energyFit: "low" | "steady" | "high";
+  title: string;
+  detail: string;
+  confidence: string;
+  dateValue: string;
+  startLabel: string;
+  endLabel: string;
+  participantIds: string[];
 };
 
-function buildDefaultCallWindows(name: string, timezone: string) {
-  const timezoneLabel = timezone || "their timezone";
+function parseClockMinutes(value: string) {
+  const match = value.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
 
-  return [
-    {
-      id: `call-${name.toLowerCase().replace(/\s+/g, "-")}-steady`,
-      person: name,
-      energyFit: "steady" as const,
-      title: `Best overlap this week: 8:00 PM your time / ${timezoneLabel}`,
-      detail: `A balanced evening window for ${name} that aims to avoid work, class, and calendar overlap.`,
-      confidence: "Shared opening",
-    },
-    {
-      id: `call-${name.toLowerCase().replace(/\s+/g, "-")}-low`,
-      person: name,
-      energyFit: "low" as const,
-      title: `Low-pressure check-in: 12:30 PM your time / ${timezoneLabel}`,
-      detail: `A shorter midday slot when you both may only have space for a quick catch-up or voice note.`,
-      confidence: "Low effort",
-    },
-  ];
+  if (!match) {
+    return null;
+  }
+
+  const hours = Number.parseInt(match[1], 10);
+  const minutes = Number.parseInt(match[2], 10);
+  const suffix = match[3].toUpperCase();
+  const normalizedHours = hours % 12 + (suffix === "PM" ? 12 : 0);
+  return normalizedHours * 60 + minutes;
 }
 
-function buildAlternateWindows(name: string, timezone: string) {
-  return (
-    alternateWindowsByPerson[name] ?? [
-      `Tuesday 7:00 PM your time / ${timezone || "their timezone"}`,
-      `Thursday 8:30 PM your time / ${timezone || "their timezone"}`,
-      `Sunday 11:00 AM your time / ${timezone || "their timezone"}`,
-    ]
+function formatClockMinutes(minutes: number) {
+  const normalized = ((minutes % (24 * 60)) + 24 * 60) % (24 * 60);
+  const hours24 = Math.floor(normalized / 60);
+  const mins = normalized % 60;
+  const suffix = hours24 >= 12 ? "PM" : "AM";
+  const hours12 = hours24 % 12 || 12;
+  return `${hours12}:${String(mins).padStart(2, "0")} ${suffix}`;
+}
+
+function shiftClockLabel(label: string, hourOffset: number) {
+  const minutes = parseClockMinutes(label);
+  if (minutes === null) {
+    return label;
+  }
+
+  return formatClockMinutes(minutes + hourOffset * 60);
+}
+
+function buildUpcomingDate(dayOffset: number) {
+  const nextDate = new Date();
+  nextDate.setDate(nextDate.getDate() + dayOffset);
+  return toDateValue(nextDate);
+}
+
+function buildCalendarAwareCallWindows(input: {
+  connectionId: string;
+  name: string;
+  timezone: string;
+  connectedCalendars: CalendarProvider[];
+  relatedCalendarEvents: CalendarEvent[];
+}): SmartCallWindow[] {
+  const timezoneLabel = input.timezone || "their timezone";
+  const timezoneOffset = timezoneOffsets[input.timezone] ?? 0;
+  const busyCount = input.relatedCalendarEvents.length;
+  const providerLabel = input.connectedCalendars.length
+    ? input.connectedCalendars.join(" + ")
+    : "Same Time shared calendar";
+
+  return (Object.entries(energyTemplates) as Array<[Exclude<EnergyFit, "all">, (typeof energyTemplates)[Exclude<EnergyFit, "all">]]>).map(
+    ([energyFit, template]) => {
+      const dateValue = buildUpcomingDate(template.dayOffset);
+      const startLabel = formatClockMinutes(template.startMinutes);
+      const endLabel = formatClockMinutes(template.endMinutes);
+      const peerStartLabel = shiftClockLabel(startLabel, timezoneOffset);
+      const peerEndLabel = shiftClockLabel(endLabel, timezoneOffset);
+      const headline =
+        energyFit === "steady"
+          ? `Best overlap this week: ${startLabel} CT / ${peerStartLabel} ${timezoneLabel}`
+          : energyFit === "low"
+            ? `Lower-pressure window: ${startLabel} CT / ${peerStartLabel} ${timezoneLabel}`
+            : `Brighter-energy check-in: ${startLabel} CT / ${peerStartLabel} ${timezoneLabel}`;
+
+      return {
+        id: `call-${input.connectionId}-${energyFit}`,
+        person: input.name,
+        energyFit,
+        title: headline,
+        detail: `${input.name}'s calendar and your shared plans suggest ${inputValueToDisplayDate(dateValue)} from ${startLabel} to ${endLabel} CT (${peerStartLabel} to ${peerEndLabel} ${timezoneLabel}). ${busyCount ? `${busyCount} shared calendar item${busyCount === 1 ? "" : "s"} already shape this week.` : "No shared conflicts are on the calendar yet."}`,
+        confidence: template.confidence,
+        dateValue,
+        startLabel,
+        endLabel,
+        participantIds: [input.connectionId],
+      };
+    }
   );
+}
+
+function buildAlternateWindows(slot: SmartCallWindow, timezone: string) {
+  const timezoneOffset = timezoneOffsets[timezone] ?? 0;
+  const startMinutes = parseClockMinutes(slot.startLabel) ?? 0;
+  const suggestions = [-90, 90, 180].map((offset, index) => {
+    const shiftedStart = formatClockMinutes(startMinutes + offset);
+    const shiftedPeerStart = formatClockMinutes(startMinutes + offset + timezoneOffset * 60);
+    const dateValue = buildUpcomingDate(index + 1);
+    return `${inputValueToDisplayDate(dateValue)} • ${shiftedStart} CT / ${shiftedPeerStart} ${timezone || "their timezone"}`;
+  });
+
+  return suggestions;
 }
 
 function toTitleCase(value: string) {
@@ -62,29 +149,31 @@ function toTitleCase(value: string) {
 }
 
 export function PlansScreen() {
-  const { connections } = useAppData();
+  const { user } = useAuth();
+  const { profile, saveProfile } = useProfile();
+  const { connections, calendarEvents, setCalendarEvents } = useAppData();
   const liveCallWindows = useMemo(() => {
     if (!connections.length) {
       return [];
     }
 
-    return connections.flatMap((connection) => {
-      const matchingSeedWindows = smartCallWindows.filter(
-        (slot) => slot.person.toLowerCase() === connection.name.toLowerCase()
-      );
-
-      return matchingSeedWindows.length
-        ? matchingSeedWindows
-        : buildDefaultCallWindows(connection.name, connection.timezone);
-    });
-  }, [connections]);
+    return connections.flatMap((connection) =>
+      buildCalendarAwareCallWindows({
+        connectionId: connection.id,
+        name: connection.name,
+        timezone: connection.timezone,
+        connectedCalendars: profile.connectedCalendars ?? [],
+        relatedCalendarEvents: calendarEvents.filter((event) =>
+          (event.participantIds ?? []).includes(connection.id)
+        ),
+      })
+    );
+  }, [calendarEvents, connections, profile.connectedCalendars]);
   const [selectedDateIdea, setSelectedDateIdea] = useState(dateIdeas[0]);
   const [dateIdeaRolls, setDateIdeaRolls] = useState(1);
   const [savedDateIdeas, setSavedDateIdeas] = useState<string[]>([]);
   const [selectedPerson, setSelectedPerson] = useState("");
-  const [selectedEnergy, setSelectedEnergy] = useState<"all" | "low" | "steady" | "high">(
-    "steady"
-  );
+  const [selectedEnergy, setSelectedEnergy] = useState<EnergyFit>("steady");
   const [scheduledCallId, setScheduledCallId] = useState<string | null>(null);
   const [alternateTimesOpenFor, setAlternateTimesOpenFor] = useState<string | null>(null);
 
@@ -99,10 +188,7 @@ export function PlansScreen() {
   );
 
   const selectedConnection = connections.find((connection) => connection.name === selectedPerson);
-  const alternateWindows = buildAlternateWindows(
-    selectedPerson,
-    selectedConnection?.timezone ?? ""
-  );
+  const connectedCalendars = profile.connectedCalendars ?? [];
 
   React.useEffect(() => {
     if (!selectedPerson && liveCallWindows[0]?.person) {
@@ -144,8 +230,55 @@ export function PlansScreen() {
     setSavedDateIdeas((current) => current.filter((item) => item !== idea));
   };
 
-  const scheduleCall = (slotId: string) => {
-    setScheduledCallId(slotId);
+  const toggleCalendarProvider = async (provider: CalendarProvider) => {
+    const nextCalendars = connectedCalendars.includes(provider)
+      ? connectedCalendars.filter((item) => item !== provider)
+      : [...connectedCalendars, provider];
+
+    await saveProfile({
+      ...profile,
+      connectedCalendars: nextCalendars,
+    });
+  };
+
+  const scheduleCall = async (slot: SmartCallWindow) => {
+    const date = parseDateValue(slot.dateValue);
+
+    if (!date) {
+      return;
+    }
+
+    const nextEvent: CalendarEvent = {
+      id: `call-event-${Date.now()}`,
+      month: date.toLocaleString("en-US", { month: "short" }).toUpperCase(),
+      day: String(date.getDate()),
+      title: `Call with ${slot.person}`,
+      detail: `${slot.startLabel} - ${slot.endLabel} CT • Scheduled from Smart call scheduling`,
+      dateValue: slot.dateValue,
+      participantIds: slot.participantIds,
+    };
+
+    const shouldSaveShared =
+      Boolean(user?.id && hasSupabaseCredentials && slot.participantIds.some((id) => isSharedConnection(id)));
+
+    if (shouldSaveShared && user?.id) {
+      try {
+        const savedEvent = await saveSharedCalendarEvent({
+          userId: user.id,
+          event: nextEvent,
+        });
+
+        if (savedEvent) {
+          setCalendarEvents((current) => [savedEvent, ...current]);
+        }
+      } catch {
+        return;
+      }
+    } else {
+      setCalendarEvents((current) => [nextEvent, ...current]);
+    }
+
+    setScheduledCallId(slot.id);
     setAlternateTimesOpenFor(null);
   };
 
@@ -208,8 +341,22 @@ export function PlansScreen() {
         <View style={styles.calendarSyncCard}>
           <Text style={styles.feedTitle}>Shared calendar scan</Text>
           <Text style={styles.feedMeta}>
-            These suggestions assume both calendars are connected, so class blocks, work
-            meetings, and existing plans are filtered out first.
+            Connect the calendars you want this prototype to reference, then use the shared calendar to hold call drafts and overlap suggestions together.
+          </Text>
+          <View style={styles.chipWrap}>
+            {calendarProviderOptions.map((provider) => (
+              <FilterChip
+                key={provider}
+                label={provider}
+                active={connectedCalendars.includes(provider)}
+                onPress={() => void toggleCalendarProvider(provider)}
+              />
+            ))}
+          </View>
+          <Text style={styles.helperMeta}>
+            {connectedCalendars.length
+              ? `Connected for scheduling: ${connectedCalendars.join(", ")}`
+              : "No external calendars connected yet. Smart windows will still save into the Same Time shared calendar."}
           </Text>
         </View>
 
@@ -266,7 +413,7 @@ export function PlansScreen() {
               <View style={styles.actionRow}>
                 <TouchableOpacity
                   style={[styles.primaryButton, styles.actionButton]}
-                  onPress={() => scheduleCall(slot.id)}
+                  onPress={() => void scheduleCall(slot)}
                 >
                   <Text style={styles.primaryButtonText}>Schedule call</Text>
                 </TouchableOpacity>
@@ -281,14 +428,16 @@ export function PlansScreen() {
               {scheduledCallId === slot.id ? (
                 <View style={styles.confirmationCard}>
                   <Text style={styles.helperMeta}>
-                    Call draft added to both calendars. Next step: confirm and send.
+                    {connectedCalendars.length
+                      ? `Call draft added to the shared calendar and queued for ${connectedCalendars.join(", ")} sync.`
+                      : "Call draft added to the shared calendar. Connect Google Calendar, Apple Calendar, or Outlook above if you want that reflected here too."}
                   </Text>
                 </View>
               ) : null}
 
               {alternateTimesOpenFor === slot.id ? (
                 <View style={styles.altList}>
-                  {alternateWindows.map((window) => (
+                  {buildAlternateWindows(slot, selectedConnection?.timezone ?? "").map((window) => (
                     <View key={window} style={styles.altRow}>
                       <Text style={styles.feedMeta}>{window}</Text>
                     </View>

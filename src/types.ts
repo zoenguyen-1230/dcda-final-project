@@ -10,6 +10,8 @@ export type SocialPlatform =
   | "X"
   | "BeReal";
 
+export type CalendarProvider = "Google Calendar" | "Apple Calendar" | "Outlook";
+
 export type AppTabParamList = {
   Home: undefined;
   People: undefined;
@@ -57,6 +59,7 @@ export interface CurrentUserProfile {
   relationshipFocus: string;
   note: string;
   linkedSocials: SocialPlatform[];
+  connectedCalendars: CalendarProvider[];
   photoUri?: string;
 }
 
