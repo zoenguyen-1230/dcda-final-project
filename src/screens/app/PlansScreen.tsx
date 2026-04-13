@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Linking, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { FilterChip } from "../../components/ui/FilterChip";
 import { ScreenSurface } from "../../components/ui/ScreenSurface";
 import { SectionCard } from "../../components/ui/SectionCard";
@@ -20,6 +20,11 @@ const calendarProviderOptions: CalendarProvider[] = [
   "Apple Calendar",
   "Outlook",
 ];
+const calendarProviderUrls: Record<CalendarProvider, string> = {
+  "Google Calendar": "https://calendar.google.com/calendar/u/0/r",
+  "Apple Calendar": "https://www.icloud.com/calendar",
+  Outlook: "https://outlook.live.com/calendar/0/view/month",
+};
 const timezoneOffsets: Record<string, number> = {
   PT: -2,
   MT: -1,
@@ -144,6 +149,51 @@ function buildAlternateWindows(slot: SmartCallWindow, timezone: string) {
   return suggestions;
 }
 
+function toGoogleDateToken(date: Date) {
+  return date
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\.\d{3}Z$/, "Z");
+}
+
+function buildGoogleCalendarUrl(slot: SmartCallWindow) {
+  const baseDate = parseDateValue(slot.dateValue);
+  const startMinutes = parseClockMinutes(slot.startLabel);
+  const endMinutes = parseClockMinutes(slot.endLabel);
+
+  if (!baseDate || startMinutes === null || endMinutes === null) {
+    return calendarProviderUrls["Google Calendar"];
+  }
+
+  const startDate = new Date(
+    baseDate.getFullYear(),
+    baseDate.getMonth(),
+    baseDate.getDate(),
+    Math.floor(startMinutes / 60),
+    startMinutes % 60,
+    0
+  );
+  const endDate = new Date(
+    baseDate.getFullYear(),
+    baseDate.getMonth(),
+    baseDate.getDate(),
+    Math.floor(endMinutes / 60),
+    endMinutes % 60,
+    0
+  );
+
+  const url = new URL("https://calendar.google.com/calendar/render");
+  url.searchParams.set("action", "TEMPLATE");
+  url.searchParams.set("text", `Call with ${slot.person}`);
+  url.searchParams.set(
+    "details",
+    `Scheduled from Same Time\n\nSuggested window: ${slot.startLabel} - ${slot.endLabel} CT`
+  );
+  url.searchParams.set("dates", `${toGoogleDateToken(startDate)}/${toGoogleDateToken(endDate)}`);
+
+  return url.toString();
+}
+
 function toTitleCase(value: string) {
   return value.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
@@ -231,7 +281,8 @@ export function PlansScreen() {
   };
 
   const toggleCalendarProvider = async (provider: CalendarProvider) => {
-    const nextCalendars = connectedCalendars.includes(provider)
+    const isConnected = connectedCalendars.includes(provider);
+    const nextCalendars = isConnected
       ? connectedCalendars.filter((item) => item !== provider)
       : [...connectedCalendars, provider];
 
@@ -239,6 +290,16 @@ export function PlansScreen() {
       ...profile,
       connectedCalendars: nextCalendars,
     });
+
+    if (!isConnected) {
+      const providerUrl = calendarProviderUrls[provider];
+
+      if (providerUrl) {
+        void Linking.openURL(providerUrl).catch(() => {
+          // Keep the connection state saved even if the browser blocks the open.
+        });
+      }
+    }
   };
 
   const scheduleCall = async (slot: SmartCallWindow) => {
@@ -280,6 +341,12 @@ export function PlansScreen() {
 
     setScheduledCallId(slot.id);
     setAlternateTimesOpenFor(null);
+
+    if (connectedCalendars.includes("Google Calendar")) {
+      void Linking.openURL(buildGoogleCalendarUrl(slot)).catch(() => {
+        // Keep the shared calendar draft even if the external tab is blocked.
+      });
+    }
   };
 
   const toggleAlternateTimes = (slotId: string) => {
@@ -341,7 +408,7 @@ export function PlansScreen() {
         <View style={styles.calendarSyncCard}>
           <Text style={styles.feedTitle}>Shared calendar scan</Text>
           <Text style={styles.feedMeta}>
-            Connect the calendars you want this prototype to reference, then use the shared calendar to hold call drafts and overlap suggestions together.
+            Keep your calendars in step so call windows and shared plans stay aligned in one place.
           </Text>
           <View style={styles.chipWrap}>
             {calendarProviderOptions.map((provider) => (
@@ -356,7 +423,7 @@ export function PlansScreen() {
           <Text style={styles.helperMeta}>
             {connectedCalendars.length
               ? `Connected for scheduling: ${connectedCalendars.join(", ")}`
-              : "No external calendars connected yet. Smart windows will still save into the Same Time shared calendar."}
+              : "Choose the calendars you want to keep aligned with Same Time. Shared call drafts will still appear here."}
           </Text>
         </View>
 
@@ -429,8 +496,8 @@ export function PlansScreen() {
                 <View style={styles.confirmationCard}>
                   <Text style={styles.helperMeta}>
                     {connectedCalendars.length
-                      ? `Call draft added to the shared calendar and queued for ${connectedCalendars.join(", ")} sync.`
-                      : "Call draft added to the shared calendar. Connect Google Calendar, Apple Calendar, or Outlook above if you want that reflected here too."}
+                      ? `Call draft added to your shared calendar and prepared for ${connectedCalendars.join(", ")}.`
+                      : "Call draft added to your shared calendar."}
                   </Text>
                 </View>
               ) : null}
