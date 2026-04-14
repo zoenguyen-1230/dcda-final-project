@@ -70,7 +70,7 @@ function persistGoogleCalendarSession(userEmail: string | null, session: GoogleC
   writeBrowserStorage(storageKey, JSON.stringify(session));
 }
 
-export function readGoogleCalendarSession(userEmail: string | null) {
+function readStoredGoogleCalendarSession(userEmail: string | null) {
   const rawSession = readBrowserStorage(getGoogleCalendarStorageKey(userEmail));
 
   if (!rawSession) {
@@ -78,24 +78,27 @@ export function readGoogleCalendarSession(userEmail: string | null) {
   }
 
   try {
-    const parsed = JSON.parse(rawSession) as GoogleCalendarSession;
-
-    if (!hasValidGoogleSession(parsed)) {
-      clearGoogleCalendarSession(userEmail);
-      return null;
-    }
-
-    return parsed;
+    return JSON.parse(rawSession) as GoogleCalendarSession;
   } catch {
+    return null;
+  }
+}
+
+export function readGoogleCalendarSession(userEmail: string | null) {
+  const parsed = readStoredGoogleCalendarSession(userEmail);
+
+  if (!parsed || !hasValidGoogleSession(parsed)) {
     clearGoogleCalendarSession(userEmail);
     return null;
   }
+
+  return parsed;
 }
 
 export function clearGoogleCalendarSession(userEmail: string | null) {
   const storageKey = getGoogleCalendarStorageKey(userEmail);
   const googleGlobal = getGoogleGlobal();
-  const session = readGoogleCalendarSession(userEmail);
+  const session = readStoredGoogleCalendarSession(userEmail);
 
   if (session?.accessToken) {
     try {
