@@ -1,0 +1,27 @@
+name: Keep Supabase Active
+
+on:
+  schedule:
+    - cron: "17 14 */3 * *"
+  workflow_dispatch:
+
+jobs:
+  ping-project:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase heartbeat function
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_PUBLISHABLE_KEY" ]; then
+            echo "Missing SUPABASE_URL or SUPABASE_PUBLISHABLE_KEY GitHub secret."
+            exit 1
+          fi
+
+          curl --fail --show-error --silent \
+            -X POST "${SUPABASE_URL}/rest/v1/rpc/keep_project_alive" \
+            -H "apikey: ${SUPABASE_PUBLISHABLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_PUBLISHABLE_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{"p_source":"github-actions"}'

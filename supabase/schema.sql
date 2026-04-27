@@ -160,6 +160,12 @@ create table if not exists public.relationship_invites (
   responded_at timestamptz
 );
 
+create table if not exists public.project_heartbeat (
+  project_key text primary key default 'same-time',
+  last_seen_at timestamptz not null default timezone('utc', now()),
+  source text not null default 'manual'
+);
+
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -288,6 +294,31 @@ begin
 end;
 $$;
 
+create or replace function public.keep_project_alive(p_source text default 'github-actions')
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  touched_at timestamptz := timezone('utc', now());
+  safe_source text := left(coalesce(nullif(trim(p_source), ''), 'github-actions'), 80);
+begin
+  insert into public.project_heartbeat (project_key, last_seen_at, source)
+  values ('same-time', touched_at, safe_source)
+  on conflict (project_key) do update
+    set last_seen_at = excluded.last_seen_at,
+        source = excluded.source;
+
+  return jsonb_build_object(
+    'ok', true,
+    'project_key', 'same-time',
+    'last_seen_at', touched_at,
+    'source', safe_source
+  );
+end;
+$$;
+
 drop function if exists public.user_can_access_relationship(uuid);
 create or replace function public.user_can_access_relationship(target_relationship_id uuid)
 returns boolean
@@ -344,6 +375,7 @@ alter table public.visit_plans enable row level security;
 alter table public.date_ideas enable row level security;
 alter table public.workspace_state enable row level security;
 alter table public.relationship_invites enable row level security;
+alter table public.project_heartbeat enable row level security;
 
 drop policy if exists "Users can read their own profile" on public.profiles;
 drop policy if exists "Users can update their own profile" on public.profiles;
@@ -386,6 +418,8 @@ drop policy if exists "Users can read profiles in shared relationships" on publi
 drop policy if exists "Senders can read their invites" on public.relationship_invites;
 drop policy if exists "Recipients can read their invites" on public.relationship_invites;
 drop policy if exists "Senders can create invites" on public.relationship_invites;
+
+grant execute on function public.keep_project_alive(text) to anon, authenticated;
 
 create policy "Users can read their own profile"
   on public.profiles

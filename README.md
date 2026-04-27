@@ -156,6 +156,20 @@ npm run deploy:draft
 
 Expo Hosting uses immutable deployments plus aliases. The `draft` alias will always point at the latest deployment you publish with `npm run deploy:draft`.
 
+## Supabase Keepalive
+
+If your Supabase free project is at risk of being paused for inactivity, this repo includes a lightweight keepalive workflow at `.github/workflows/keep-supabase-active.yml`.
+
+To turn it on:
+
+1. Run the latest SQL in `supabase/schema.sql` inside the Supabase SQL editor so the `keep_project_alive` function exists.
+2. Add these GitHub repository secrets:
+   - `SUPABASE_URL`
+   - `SUPABASE_PUBLISHABLE_KEY`
+3. Let the scheduled GitHub Action run every few days, or trigger it manually from the Actions tab.
+
+The workflow calls a tiny heartbeat RPC so the Supabase project receives regular activity without touching user-facing app data.
+
 ## GitHub
 
 This repo is connected to GitHub, and the recommended collaboration workflow is:
